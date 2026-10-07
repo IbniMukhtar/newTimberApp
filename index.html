@@ -1,0 +1,2309 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d5a43">
+<title>Timber Logs Manager</title>
+
+<!-- Apply the saved theme (light / dark / system) before first paint -->
+<script>
+(function () {
+  try {
+    var p = localStorage.getItem('timberLogsManager.theme');
+    var t = (p === 'light' || p === 'dark') ? p :
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-bs-theme', t);
+  } catch (e) {}
+})();
+</script>
+
+<!-- External libraries (CDN): same dependencies as the original app -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Narrow:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+/* ============================================================
+   Design tokens
+   ============================================================ */
+:root{
+  --tl-bg:#eef2ee; --tl-card:#ffffff; --tl-soft:#f4f7f4;
+  --tl-text:#17231d; --tl-muted:#566559; --tl-line:#d6ddd7;
+  --tl-brand:#1d5a43; --tl-brand-hover:#174a38; --tl-brand-ink:#ffffff; --tl-brand-soft:#e0efe7;
+  --tl-accent:#b9801a; --tl-accent-soft:#f8eed7;
+  --tl-ok:#1f7a4f; --tl-ok-soft:#dff1e6;
+  --tl-warn:#8a5a00; --tl-warn-soft:#fbefd0;
+  --tl-danger:#b0392b; --tl-danger-soft:#f9e1dd;
+  --tl-focus:#2a7fd4;
+  --tl-shadow:0 1px 2px rgba(20,35,28,.06),0 8px 22px rgba(20,35,28,.07);
+  --tl-radius:14px; --nav-h:64px; --hdr-h:112px;
+  --bs-body-color:var(--tl-text); --bs-body-bg:var(--tl-card); --bs-border-color:var(--tl-line);
+}
+[data-bs-theme="dark"]{
+  --tl-bg:#0f1512; --tl-card:#18211c; --tl-soft:#1d2822;
+  --tl-text:#e6ede8; --tl-muted:#9aaa9f; --tl-line:#2c3a32;
+  --tl-brand:#4fb58a; --tl-brand-hover:#63c49b; --tl-brand-ink:#08150e; --tl-brand-soft:#1f3329;
+  --tl-accent:#e0a63f; --tl-accent-soft:#33291299;
+  --tl-ok:#6fd0a3; --tl-ok-soft:#1c3a2b;
+  --tl-warn:#f0c15f; --tl-warn-soft:#3a2f12;
+  --tl-danger:#ef8576; --tl-danger-soft:#3b201c;
+  --tl-focus:#6db3f2;
+  --tl-shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px rgba(0,0,0,.35);
+  --bs-body-color:var(--tl-text); --bs-body-bg:#141c18; --bs-border-color:var(--tl-line);
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+*{-webkit-tap-highlight-color:transparent}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+body{
+  background:var(--tl-bg);color:var(--tl-text);
+  font-family:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-variant-numeric:tabular-nums;
+  padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) + 28px);
+}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid var(--tl-focus);outline-offset:2px;border-radius:6px}
+h1,h2,h3,h4{font-weight:600}
+.visually-hidden-focusable:not(:focus){position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.num-display{font-family:"Archivo Narrow","Archivo",sans-serif;font-weight:700;letter-spacing:.01em}
+.hint{font-size:.84rem;color:var(--tl-muted)}
+
+/* ============================================================
+   Header
+   ============================================================ */
+.app-header{
+  position:sticky;top:0;z-index:100;background:var(--tl-brand);color:var(--tl-brand-ink);
+  padding:calc(8px + env(safe-area-inset-top,0px)) 16px 8px;box-shadow:0 4px 16px rgba(0,0,0,.18);
+}
+.app-header-inner,.header-chips{max-width:1400px;margin:0 auto}
+.app-header-inner{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:11px;min-width:0}
+.brand-mark{font-size:1.7rem;line-height:1}
+.brand h1{margin:0;font-family:"Archivo Narrow","Archivo",sans-serif;font-weight:700;font-size:1.35rem;line-height:1.1;letter-spacing:.01em}
+.tagline{margin:1px 0 0;font-size:.82rem;opacity:.9}
+.icon-btn{
+  width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.1);
+  color:inherit;display:inline-flex;align-items:center;justify-content:center;font-size:1.15rem;transition:background-color .15s;
+}
+.icon-btn:hover{background:rgba(255,255,255,.22)}
+.icon-btn:focus-visible{outline-color:#fff}
+.header-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:2px 11px;border-radius:99px;background:rgba(255,255,255,.14);font-size:.82rem;font-weight:500}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:44vw}
+.chip-strong{background:rgba(255,255,255,.26);font-weight:700}
+
+/* ============================================================
+   Shell + navigation (bottom bar on phones, sidebar on desktop)
+   ============================================================ */
+.app-nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:100;display:flex;
+  height:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));padding-bottom:env(safe-area-inset-bottom,0px);
+  background:var(--tl-card);border-top:1px solid var(--tl-line);box-shadow:0 -4px 14px rgba(0,0,0,.1);
+}
+.app-nav button{
+  flex:1;background:none;border:0;color:var(--tl-muted);font-size:.76rem;font-weight:600;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:var(--nav-h);position:relative;
+}
+.app-nav button i{font-size:1.35rem;line-height:1}
+.app-nav button:hover{color:var(--tl-text)}
+.app-nav button[aria-current="page"]{color:var(--tl-brand)}
+.app-nav button[aria-current="page"]::before{content:"";position:absolute;top:0;left:22%;right:22%;height:3px;border-radius:0 0 3px 3px;background:var(--tl-brand)}
+.app-main{max-width:1400px;margin:0 auto;padding:14px 14px 0}
+@media (min-width:992px){
+  body{padding-bottom:28px}
+  .shell{display:flex;align-items:flex-start;max-width:1500px;margin:0 auto}
+  .app-nav{
+    position:sticky;top:var(--hdr-h);bottom:auto;left:auto;right:auto;flex:none;width:210px;
+    height:calc(100vh - var(--hdr-h));padding:16px 10px;flex-direction:column;justify-content:flex-start;gap:4px;
+    border-top:0;border-right:1px solid var(--tl-line);box-shadow:none;background:transparent;
+  }
+  .app-nav button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;min-height:48px;padding:0 14px;border-radius:10px;font-size:.95rem}
+  .app-nav button i{font-size:1.2rem}
+  .app-nav button[aria-current="page"]{background:var(--tl-brand-soft)}
+  .app-nav button[aria-current="page"]::before{left:0;right:auto;top:10px;bottom:10px;width:4px;height:auto;border-radius:0 4px 4px 0}
+  .app-main{flex:1;min-width:0;padding:18px 22px 0}
+}
+
+/* ============================================================
+   Cards, panels, forms
+   ============================================================ */
+.dash{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media (min-width:640px){.dash{grid-template-columns:repeat(3,1fr)}}
+@media (min-width:1280px){.dash{grid-template-columns:repeat(6,1fr)}}
+.stat-card{background:var(--tl-card);border:1px solid var(--tl-line);border-radius:var(--tl-radius);padding:12px 14px;box-shadow:var(--tl-shadow);display:flex;gap:11px;align-items:center;min-width:0}
+.stat-ico{flex:none;width:40px;height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;background:var(--tl-brand-soft);color:var(--tl-brand);font-size:1.2rem}
+.stat-body{min-width:0}
+.stat-label{font-size:.78rem;color:var(--tl-muted);font-weight:600}
+.stat-value{font-size:1.35rem;line-height:1.15;word-break:break-word}
+.stat-value small{font-size:.8rem;font-weight:500;color:var(--tl-muted);font-family:"Archivo",sans-serif}
+.save-status{font-size:.8rem;color:var(--tl-muted);margin:8px 4px 0;text-align:right;min-height:1.2em}
+.save-status.err{color:var(--tl-danger);font-weight:600}
+.home-grid{display:grid;gap:14px;margin-top:12px;align-items:start}
+.home-grid>div{display:grid;gap:14px;min-width:0}
+@media (min-width:992px){.home-grid{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr)}}
+.panel{background:var(--tl-card);border:1px solid var(--tl-line);border-radius:var(--tl-radius);box-shadow:var(--tl-shadow);scroll-margin-top:calc(var(--hdr-h) + 8px)}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--tl-line)}
+.panel-head h2{margin:0;font-size:1.02rem;display:flex;align-items:center;gap:9px}
+.panel-head h2 i{color:var(--tl-brand)}
+.panel-body{padding:16px}
+.view-title{font-size:1.3rem;margin:4px 2px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.view-grid{display:grid;gap:14px}
+@media (min-width:992px){.view-grid.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.req{color:var(--tl-danger);margin-left:2px}
+.form-label{font-weight:500;font-size:.9rem;margin-bottom:5px}
+.form-control,.form-select{min-height:46px;border-color:var(--tl-line);background-color:var(--tl-card);color:var(--tl-text)}
+.form-control:focus,.form-select:focus{border-color:var(--tl-brand);box-shadow:0 0 0 .22rem color-mix(in srgb,var(--tl-brand) 28%,transparent)}
+.form-control:disabled,.form-select:disabled{background-color:var(--tl-soft);color:var(--tl-muted);opacity:1}
+.input-group-text{background:var(--tl-soft);border-color:var(--tl-line);color:var(--tl-muted)}
+.invalid-feedback{font-size:.84rem}
+.form-check-input:checked{background-color:var(--tl-brand);border-color:var(--tl-brand)}
+.form-switch .form-check-input{width:2.8em;height:1.5em;cursor:pointer}
+
+.btn{min-height:44px;font-weight:600;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:background-color .15s,border-color .15s,transform .08s}
+.btn:active:not(:disabled){transform:scale(.98)}
+.btn-sm{min-height:38px;padding:4px 11px;font-size:.88rem;border-radius:9px}
+.btn-brand{--bs-btn-color:var(--tl-brand-ink);--bs-btn-bg:var(--tl-brand);--bs-btn-border-color:var(--tl-brand);--bs-btn-hover-color:var(--tl-brand-ink);--bs-btn-hover-bg:var(--tl-brand-hover);--bs-btn-hover-border-color:var(--tl-brand-hover);--bs-btn-active-color:var(--tl-brand-ink);--bs-btn-active-bg:var(--tl-brand-hover);--bs-btn-active-border-color:var(--tl-brand-hover);--bs-btn-disabled-color:var(--tl-brand-ink);--bs-btn-disabled-bg:var(--tl-brand);--bs-btn-disabled-border-color:var(--tl-brand)}
+.btn-soft{--bs-btn-color:var(--tl-text);--bs-btn-bg:transparent;--bs-btn-border-color:var(--tl-line);--bs-btn-hover-color:var(--tl-text);--bs-btn-hover-bg:var(--tl-soft);--bs-btn-hover-border-color:var(--tl-muted);--bs-btn-active-color:var(--tl-text);--bs-btn-active-bg:var(--tl-soft);--bs-btn-active-border-color:var(--tl-muted);--bs-btn-disabled-color:var(--tl-muted);--bs-btn-disabled-bg:transparent;--bs-btn-disabled-border-color:var(--tl-line)}
+.btn-warn-soft{--bs-btn-color:var(--tl-warn);--bs-btn-bg:var(--tl-warn-soft);--bs-btn-border-color:transparent;--bs-btn-hover-color:var(--tl-warn);--bs-btn-hover-bg:var(--tl-warn-soft);--bs-btn-hover-border-color:var(--tl-warn);--bs-btn-active-color:var(--tl-warn);--bs-btn-active-bg:var(--tl-warn-soft);--bs-btn-active-border-color:var(--tl-warn)}
+.btn-danger-soft{--bs-btn-color:var(--tl-danger);--bs-btn-bg:var(--tl-danger-soft);--bs-btn-border-color:transparent;--bs-btn-hover-color:var(--tl-danger);--bs-btn-hover-bg:var(--tl-danger-soft);--bs-btn-hover-border-color:var(--tl-danger);--bs-btn-active-color:var(--tl-danger);--bs-btn-active-bg:var(--tl-danger-soft);--bs-btn-active-border-color:var(--tl-danger)}
+.btn-danger-solid{--bs-btn-color:#fff;--bs-btn-bg:#b0392b;--bs-btn-border-color:#b0392b;--bs-btn-hover-color:#fff;--bs-btn-hover-bg:#962f23;--bs-btn-hover-border-color:#962f23;--bs-btn-active-color:#fff;--bs-btn-active-bg:#962f23;--bs-btn-active-border-color:#962f23}
+.btn.busy{pointer-events:none;opacity:.75}
+.spinner{width:16px;height:16px;border:2.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.status-pill{display:inline-flex;align-items:center;gap:6px;font-size:.82rem;font-weight:600;padding:3px 11px;border-radius:99px;background:var(--tl-soft);color:var(--tl-muted)}
+.status-pill.ok{background:var(--tl-ok-soft);color:var(--tl-ok)}
+.status-pill.warn{background:var(--tl-warn-soft);color:var(--tl-warn)}
+.note{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:10px;font-size:.9rem;margin-top:12px}
+.note i{margin-top:2px}
+.note.warn{background:var(--tl-warn-soft);color:var(--tl-warn)}
+
+/* Session bar */
+.session-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;background:var(--tl-card);border:1px solid var(--tl-line);border-radius:var(--tl-radius);padding:10px 14px}
+.session-bar .txt{font-size:.9rem;color:var(--tl-muted);display:flex;align-items:center;gap:8px}
+.session-bar .txt strong{color:var(--tl-text)}
+.session-actions{display:flex;gap:6px;flex-wrap:wrap}
+
+/* Supplier */
+.sup-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px 16px}
+.sup-grid .k{font-size:.78rem;color:var(--tl-muted);font-weight:600}
+.sup-grid .v{font-weight:600;word-break:break-word}
+
+/* Entry */
+.rapid-strip{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--tl-brand);color:var(--tl-brand-ink);border-radius:12px;padding:10px 14px;margin-bottom:14px}
+.rapid-strip .txt{font-weight:700;font-size:1.02rem}
+.rapid-strip .btn{--bs-btn-color:var(--tl-brand-ink);--bs-btn-border-color:rgba(255,255,255,.45);--bs-btn-bg:transparent;--bs-btn-hover-bg:rgba(255,255,255,.18);--bs-btn-hover-color:var(--tl-brand-ink);--bs-btn-hover-border-color:#fff;--bs-btn-active-bg:rgba(255,255,255,.25);--bs-btn-active-color:var(--tl-brand-ink)}
+.block-title{font-size:.9rem;font-weight:600;margin:0 0 8px;color:var(--tl-text)}
+.sub-label{font-size:.76rem;font-weight:600;color:var(--tl-muted);margin:8px 0 5px}
+.height-display{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--tl-soft);border-radius:12px;padding:10px 14px;margin-bottom:10px}
+.height-display .lbl{font-size:.78rem;color:var(--tl-muted);font-weight:600}
+.height-value{font-size:1.9rem;line-height:1.1}
+.pulse{animation:pulse .7s ease 1}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--tl-warn) 60%,transparent)}100%{box-shadow:0 0 0 14px transparent}}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.hchip{min-height:44px;padding:0 14px;border-radius:10px;border:1px solid var(--tl-line);background:var(--tl-soft);color:var(--tl-text);font-weight:600;font-size:.98rem;transition:background-color .12s,border-color .12s,transform .08s}
+.hchip:hover{border-color:var(--tl-brand)}
+.hchip:active{transform:scale(.96)}
+.hchip.active{background:var(--tl-brand);border-color:var(--tl-brand);color:var(--tl-brand-ink)}
+.quick-group{margin-bottom:10px}
+.quick-group-label{font-size:.74rem;font-weight:600;color:var(--tl-muted);margin-bottom:4px}
+.quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(56px,1fr));gap:8px}
+.quick-girth-btn{min-height:50px;border-radius:10px;border:1px solid var(--tl-line);background:var(--tl-soft);color:var(--tl-text);font-size:1.1rem;font-weight:600;transition:background-color .12s,border-color .12s,transform .08s}
+.quick-girth-btn:hover:not(:disabled){border-color:var(--tl-brand)}
+.quick-girth-btn:active:not(:disabled){transform:scale(.94);background:var(--tl-brand-soft)}
+.quick-girth-btn.active{background:var(--tl-brand);border-color:var(--tl-brand);color:var(--tl-brand-ink)}
+.quick-girth-btn:disabled{opacity:.45;cursor:not-allowed}
+.add-btn{width:100%;min-height:56px;font-size:1.12rem}
+.add-btn.done{animation:addflash .5s ease}
+@keyframes addflash{0%{filter:brightness(1.35)}100%{filter:none}}
+#girthInput{font-size:1.4rem;font-weight:700;min-height:54px}
+.divider{border-top:1px dashed var(--tl-line);margin:14px 0}
+
+/* Log rows */
+.log-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 16px;border-bottom:1px solid var(--tl-line)}
+.log-tools .grow{flex:1 1 180px;min-width:0}
+.filter-badge{background:var(--tl-brand);color:var(--tl-brand-ink);border-radius:99px;font-size:.72rem;padding:1px 7px;font-weight:700}
+.filter-panel{padding:12px 16px;border-bottom:1px solid var(--tl-line);background:var(--tl-soft);display:grid;gap:10px;grid-template-columns:repeat(4,1fr);align-items:end}
+@media (max-width:767.98px){.filter-panel{grid-template-columns:1fr 1fr}}
+.results-line{padding:8px 16px;font-size:.84rem;color:var(--tl-muted)}
+.log-list{list-style:none;margin:0;padding:0}
+.log-item{display:grid;grid-template-columns:auto 1fr 1fr 1fr;gap:8px 12px;align-items:center;padding:12px 14px;border:1px solid var(--tl-line);border-radius:12px;background:var(--tl-card);position:relative}
+.log-list.padded{display:grid;gap:10px;padding:12px}
+.log-item.is-pinned{background:var(--tl-accent-soft);border-color:var(--tl-accent);box-shadow:inset 4px 0 0 var(--tl-accent)}
+.log-item.flash{animation:rowflash 1.1s ease}
+@keyframes rowflash{0%{background:var(--tl-brand-soft)}100%{}}
+.log-num{font-weight:700;display:flex;flex-direction:column;line-height:1.15}
+.log-num .tag{font-size:.68rem;color:var(--tl-muted);font-weight:600}
+.log-num .n{font-size:1.15rem}
+.line-tag{display:inline-block;font-size:.68rem;font-weight:700;background:var(--tl-brand-soft);color:var(--tl-brand);border-radius:6px;padding:0 6px;margin-top:2px}
+.pin-mark{color:var(--tl-accent);font-size:.9rem;margin-left:4px}
+.log-cell .lbl{display:block;font-size:.7rem;color:var(--tl-muted);font-weight:600}
+.log-cell .val{font-weight:700;font-size:1.05rem}
+.log-cell .val small{font-weight:500;color:var(--tl-muted)}
+.log-actions{grid-column:1/-1;display:flex;gap:6px}
+.log-actions .btn{flex:1}
+@media (min-width:640px){
+  .log-item{grid-template-columns:90px 1.2fr 1fr 1.2fr auto}
+  .log-actions{grid-column:auto;justify-content:flex-end}
+  .log-actions .btn{flex:none}
+}
+@media (min-width:640px) and (max-width:1399.98px){.act-text{display:none}}
+.empty-state{padding:30px 18px;text-align:center;color:var(--tl-muted)}
+.empty-state i{font-size:2.1rem;color:var(--tl-brand);opacity:.75;display:block;margin-bottom:6px}
+.empty-state strong{display:block;color:var(--tl-text);font-size:1.05rem;margin-bottom:3px}
+.empty-state .btn{margin-top:10px}
+.more-wrap{padding:0 12px 14px;text-align:center}
+
+/* Lines */
+.line-card{background:var(--tl-card);border:1px solid var(--tl-line);border-radius:var(--tl-radius);padding:14px 16px;box-shadow:var(--tl-shadow)}
+.line-card.current{border-color:var(--tl-brand);box-shadow:0 0 0 2px color-mix(in srgb,var(--tl-brand) 30%,transparent),var(--tl-shadow)}
+.line-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.line-title{font-size:1.25rem}
+.line-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
+.line-metrics .k{font-size:.74rem;color:var(--tl-muted);font-weight:600}
+.line-metrics .v{font-size:1.15rem}
+.line-actions{display:flex;gap:8px;flex-wrap:wrap}
+.lines-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+
+/* Reports */
+.sum-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media (min-width:640px){.sum-grid{grid-template-columns:repeat(3,1fr)}}
+.sum-card{background:var(--tl-soft);border-radius:12px;padding:12px 14px;min-width:0}
+.sum-card .k{font-size:.76rem;color:var(--tl-muted);font-weight:600}
+.sum-card .v{font-size:1.25rem;line-height:1.2;word-break:break-word}
+.sum-card.primary{background:var(--tl-brand);color:var(--tl-brand-ink)}
+.sum-card.primary .k{color:inherit;opacity:.88}
+.more-stats{display:grid;grid-template-columns:1fr;gap:0 24px;margin:14px 0 0}
+@media (min-width:640px){.more-stats{grid-template-columns:repeat(2,1fr)}}
+.more-stats div{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--tl-line);font-size:.92rem}
+.more-stats dt{font-weight:500;color:var(--tl-muted)}
+.more-stats dd{margin:0;font-weight:600;text-align:right}
+.hbar-row{display:grid;grid-template-columns:70px 1fr auto;gap:10px;align-items:center;margin:8px 0;font-size:.9rem}
+.hbar-track{background:var(--tl-soft);border-radius:8px;height:22px;overflow:hidden}
+.hbar{background:var(--tl-brand);height:100%;border-radius:8px;transition:width .35s ease;min-width:3px}
+.hbar-val{font-weight:700;min-width:84px;text-align:right}
+.chart-box{min-height:200px}
+.chart-empty{padding:34px 10px;text-align:center;color:var(--tl-muted);font-size:.92rem}
+.chart-svg text{fill:var(--tl-muted);font-size:11px;font-family:"Archivo",sans-serif}
+.chart-svg .grid{stroke:var(--tl-line);stroke-width:1}
+.chart-svg .bar{fill:var(--tl-brand)}
+.chart-svg .bar:hover{fill:var(--tl-accent)}
+.export-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media (min-width:640px){.export-grid{grid-template-columns:repeat(4,1fr)}}
+.export-grid .btn{flex-direction:column;min-height:74px;gap:4px;font-size:.9rem}
+.export-grid .btn i{font-size:1.4rem}
+
+/* Activity */
+.activity{list-style:none;margin:0;padding:0}
+.activity li{display:flex;gap:10px;padding:9px 16px;border-bottom:1px solid var(--tl-line);font-size:.9rem}
+.activity li:last-child{border-bottom:0}
+.activity .time{flex:none;color:var(--tl-muted);font-size:.78rem;min-width:44px;padding-top:2px}
+
+/* Settings + sessions */
+.setting-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--tl-line)}
+.setting-row:last-child{border-bottom:0}
+.setting-row .t{font-weight:600}
+.setting-row .d{font-size:.84rem;color:var(--tl-muted)}
+.setting-row .form-select{width:auto;max-width:48vw}
+.sess-item{border:1px solid var(--tl-line);border-radius:12px;padding:12px 14px;margin-bottom:8px}
+.sess-item .top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.sess-item .meta{color:var(--tl-muted);font-size:.84rem}
+.sess-actions{display:flex;gap:8px;margin-top:8px}
+.kv-list{display:grid;gap:0}
+.kv-list div{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--tl-line);font-size:.93rem}
+.kv-list dt{font-weight:500;color:var(--tl-muted)}
+.kv-list dd{margin:0;font-weight:600;text-align:right;word-break:break-word}
+
+/* Toasts */
+.toasts{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) + 14px);z-index:2000;display:grid;gap:8px;width:min(440px,calc(100vw - 24px));pointer-events:none}
+@media (min-width:992px){.toasts{bottom:24px}}
+.toast-item{pointer-events:auto;display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:12px;background:var(--tl-text);color:var(--tl-card);box-shadow:0 8px 24px rgba(0,0,0,.28);font-weight:500;font-size:.93rem;animation:toastin .22s ease}
+@keyframes toastin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.toast-item i{flex:none;font-size:1.1rem}
+.toast-success i{color:#58d19a}.toast-warn i{color:#f2c15a}.toast-error i{color:#ff8f80}.toast-info i{color:#7cc0ff}
+[data-bs-theme="dark"] .toast-success i{color:#1f7a4f}[data-bs-theme="dark"] .toast-warn i{color:#8a5a00}[data-bs-theme="dark"] .toast-error i{color:#b0392b}[data-bs-theme="dark"] .toast-info i{color:#1a62b0}
+.toast-msg{flex:1}
+.toast-action{background:transparent;border:1px solid currentColor;color:inherit;border-radius:8px;padding:5px 12px;font-weight:700;min-height:36px}
+
+/* Dialogs */
+dialog{border:0;border-radius:18px;padding:0;background:var(--tl-card);color:var(--tl-text);width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 24px);box-shadow:0 24px 70px rgba(0,0,0,.4)}
+dialog::backdrop{background:rgba(8,16,12,.55)}
+dialog[open]{animation:dlgin .18s ease}
+@keyframes dlgin{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.dlg{padding:20px;overflow:auto;max-height:calc(100dvh - 24px)}
+.dlg h3{font-size:1.2rem;margin:0 0 4px}
+.dlg-sub{color:var(--tl-muted);font-size:.92rem;margin:0 0 14px}
+.dlg-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+.dlg-actions .btn{min-width:110px}
+.edit-preview{display:flex;justify-content:space-between;align-items:center;background:var(--tl-brand-soft);color:var(--tl-brand);border-radius:12px;padding:12px 14px;margin-top:14px}
+.edit-preview strong{font-size:1.5rem}
+
+/* Print sheet (only thing shown when printing) */
+#printSheet{display:none}
+@media print{
+  @page{margin:14mm}
+  html,body{background:#fff!important;color:#000!important}
+  body{padding:0!important}
+  body>*:not(#printSheet){display:none!important}
+  #printSheet{display:block!important;font-family:Arial,Helvetica,sans-serif;font-size:10.5pt}
+  #printSheet h1{font-size:18pt;text-align:center;margin:0}
+  #printSheet h2{font-size:12.5pt;margin:12px 0 4px}
+  #printSheet .co{text-align:center;margin:0 0 4px}
+  #printSheet .rule{border-top:2px solid #1d5a43;margin:8px 0 12px}
+  #printSheet table{width:100%;border-collapse:collapse;margin:6px 0 12px}
+  #printSheet th,#printSheet td{border:1px solid #888;padding:3px 8px;text-align:left}
+  #printSheet th{background:#e6efe9}
+  #printSheet .r{text-align:right}
+  #printSheet .load td{border:0;padding:2px 8px 2px 0}
+  #printSheet .big{font-size:15pt;font-weight:bold}
+  #printSheet .linehead th{background:#1d5a43;color:#fff}
+  #printSheet .sign{display:flex;justify-content:space-between;gap:40px;margin-top:46px}
+  #printSheet .sign div{flex:1;border-top:1px solid #000;padding-top:4px;font-size:10pt}
+  #printSheet tr{page-break-inside:avoid}
+}
+</style>
+</head>
+
+<body>
+<a class="visually-hidden-focusable btn btn-brand m-2" href="#entryPanel">Skip to quick entry</a>
+
+<!-- ============================ HEADER ============================ -->
+<header class="app-header" id="appHeader">
+  <div class="app-header-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">🪵</span>
+      <div>
+        <h1>Timber Logs Manager</h1>
+        <p class="tagline" id="hdrDate"></p>
+      </div>
+    </div>
+    <button type="button" class="icon-btn" id="themeBtn" aria-label="Switch to dark mode" title="Light / dark mode"><i class="bi bi-moon-stars" aria-hidden="true"></i></button>
+  </div>
+  <div class="header-chips" aria-label="Current load">
+    <span class="chip"><i class="bi bi-person-badge" aria-hidden="true"></i><span id="hdrSupplier">No supplier yet</span></span>
+    <span class="chip"><i class="bi bi-layers" aria-hidden="true"></i><span id="hdrLine">Line 1</span></span>
+    <span class="chip chip-strong"><i class="bi bi-box-seam" aria-hidden="true"></i><span id="hdrVolume">0.00 cu.ft</span></span>
+  </div>
+</header>
+
+<div class="shell">
+<nav class="app-nav" aria-label="Main navigation">
+  <button type="button" data-view="home"><i class="bi bi-house" aria-hidden="true"></i>Home</button>
+  <button type="button" data-view="logs"><i class="bi bi-list-ul" aria-hidden="true"></i>Logs</button>
+  <button type="button" data-view="lines"><i class="bi bi-layers" aria-hidden="true"></i>Lines</button>
+  <button type="button" data-view="reports"><i class="bi bi-file-earmark-text" aria-hidden="true"></i>Reports</button>
+  <button type="button" data-view="settings"><i class="bi bi-gear" aria-hidden="true"></i>Settings</button>
+</nav>
+
+<main class="app-main" id="main">
+
+<!-- ============================ HOME ============================ -->
+<section id="view-home" class="view" aria-label="Home">
+  <div class="dash" aria-label="Overview">
+    <div class="stat-card"><span class="stat-ico"><i class="bi bi-list-ol" aria-hidden="true"></i></span><div class="stat-body"><div class="stat-label">Total logs</div><div class="stat-value num-display" id="dLogs">0</div></div></div>
+    <div class="stat-card"><span class="stat-ico"><i class="bi bi-box-seam" aria-hidden="true"></i></span><div class="stat-body"><div class="stat-label">Total volume</div><div class="stat-value num-display"><span id="dVolume">0.00</span> <small class="u-label">cu.ft</small></div></div></div>
+    <div class="stat-card"><span class="stat-ico"><i class="bi bi-layers" aria-hidden="true"></i></span><div class="stat-body"><div class="stat-label">Current line</div><div class="stat-value num-display" id="dLine">Line 1</div></div></div>
+    <div class="stat-card"><span class="stat-ico"><i class="bi bi-check2-all" aria-hidden="true"></i></span><div class="stat-body"><div class="stat-label">Completed lines</div><div class="stat-value num-display" id="dDone">0</div></div></div>
+    <div class="stat-card"><span class="stat-ico"><i class="bi bi-circle" aria-hidden="true"></i></span><div class="stat-body"><div class="stat-label">Average girth</div><div class="stat-value num-display"><span id="dAvg">0.00</span> <small>in</small></div></div></div>
+    <div class="stat-card"><span class="stat-ico"><i class="bi bi-arrows-expand" aria-hidden="true"></i></span><div class="stat-body"><div class="stat-label">Current height</div><div class="stat-value num-display" id="dHeight">--</div></div></div>
+  </div>
+  <div class="save-status" id="saveStatus" role="status"></div>
+
+  <div class="session-bar">
+    <div class="txt"><i class="bi bi-clock-history" aria-hidden="true"></i><span id="sessText">Session</span></div>
+    <div class="session-actions">
+      <button type="button" class="btn btn-soft btn-sm" id="sessInfoBtn"><i class="bi bi-info-circle" aria-hidden="true"></i> Session info</button>
+      <button type="button" class="btn btn-soft btn-sm" id="sessResetBtn"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Reset session</button>
+      <button type="button" class="btn btn-brand btn-sm" id="sessNewBtn"><i class="bi bi-journal-plus" aria-hidden="true"></i> New session</button>
+    </div>
+  </div>
+
+  <div class="home-grid">
+    <div>
+      <!-- SUPPLIER -->
+      <section class="panel" id="supplierPanel" aria-labelledby="supplierTitle">
+        <div class="panel-head">
+          <h2 id="supplierTitle"><i class="bi bi-person-badge" aria-hidden="true"></i> Supplier</h2>
+          <span class="status-pill" id="supplierPill"></span>
+        </div>
+        <div class="panel-body">
+          <div id="supplierSummary" hidden>
+            <div class="sup-grid">
+              <div><div class="k">Supplier</div><div class="v" id="sumSupplier">--</div></div>
+              <div><div class="k">Vehicle</div><div class="v" id="sumVehicle">--</div></div>
+              <div><div class="k">Driver</div><div class="v" id="sumDriver">--</div></div>
+              <div><div class="k">Log type</div><div class="v" id="sumLogType">--</div></div>
+            </div>
+            <button type="button" class="btn btn-warn-soft btn-sm mt-3" id="editSupplierBtn"><i class="bi bi-pencil-square" aria-hidden="true"></i> Edit details</button>
+          </div>
+          <form id="supplierForm" novalidate autocomplete="off">
+            <div class="mb-3">
+              <label for="supplierName" class="form-label">Supplier name<span class="req" aria-hidden="true">*</span></label>
+              <div class="input-group has-validation">
+                <span class="input-group-text"><i class="bi bi-person" aria-hidden="true"></i></span>
+                <input id="supplierName" class="form-control" type="text" maxlength="60" required aria-required="true" aria-describedby="supplierNameErr" placeholder="e.g. ABC Timber Traders">
+                <div class="invalid-feedback" id="supplierNameErr"></div>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label for="vehicleNumber" class="form-label">Vehicle number<span class="req" aria-hidden="true">*</span></label>
+              <div class="input-group has-validation">
+                <span class="input-group-text"><i class="bi bi-truck" aria-hidden="true"></i></span>
+                <input id="vehicleNumber" class="form-control" type="text" maxlength="20" required aria-required="true" aria-describedby="vehicleNumberErr" placeholder="e.g. JK01AB1234" autocapitalize="characters">
+                <div class="invalid-feedback" id="vehicleNumberErr"></div>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label for="driverName" class="form-label">Driver name<span class="req" aria-hidden="true">*</span></label>
+              <div class="input-group has-validation">
+                <span class="input-group-text"><i class="bi bi-person-circle" aria-hidden="true"></i></span>
+                <input id="driverName" class="form-control" type="text" maxlength="60" required aria-required="true" aria-describedby="driverNameErr" placeholder="Driver's full name">
+                <div class="invalid-feedback" id="driverNameErr"></div>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label for="logType" class="form-label">Log type <span class="hint">(optional)</span></label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-tree" aria-hidden="true"></i></span>
+                <select id="logType" class="form-select">
+                  <option value="">Select log type</option>
+                  <option>Fras</option>
+                  <option>Brran</option>
+                  <option>Yedd</option>
+                </select>
+              </div>
+            </div>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-brand flex-fill" id="saveSupplierBtn"><i class="bi bi-check2-circle" aria-hidden="true"></i> Save supplier</button>
+              <button type="button" class="btn btn-soft" id="cancelSupplierBtn" hidden>Cancel</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- QUICK ENTRY -->
+      <section class="panel" id="entryPanel" aria-labelledby="entryTitle">
+        <div class="panel-head">
+          <h2 id="entryTitle"><i class="bi bi-rulers" aria-hidden="true"></i> Quick entry</h2>
+          <div class="form-check form-switch m-0 d-flex align-items-center gap-2">
+            <input class="form-check-input m-0" type="checkbox" role="switch" id="rapidToggle">
+            <label class="form-check-label fw-semibold" for="rapidToggle">Rapid entry</label>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="rapid-strip">
+            <span class="txt" id="rapidText">Line 1 • 0 Logs • 0.00 cu.ft</span>
+            <button type="button" class="btn btn-sm" id="lineChipBtn" aria-label="Change line number"><i class="bi bi-pencil" aria-hidden="true"></i> Line no.</button>
+          </div>
+
+          <h3 class="block-title">1. Height</h3>
+          <div class="height-display">
+            <div><div class="lbl">Current height</div><div class="height-value num-display" id="currentHeightText">--</div></div>
+            <span class="status-pill" id="heightPill"></span>
+          </div>
+          <div class="sub-label">Common heights</div>
+          <div class="chips" id="presetRow" role="group" aria-label="Common heights"></div>
+          <div id="recentWrap" hidden>
+            <div class="sub-label">Recently used</div>
+            <div class="chips" id="recentRow" role="group" aria-label="Recently used heights"></div>
+          </div>
+          <div class="sub-label">Custom height</div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label for="heightFeet" class="visually-hidden">Feet</label>
+              <select id="heightFeet" class="form-select" aria-describedby="heightErr"><option value="">Feet</option></select>
+            </div>
+            <div class="col-6">
+              <label for="heightInches" class="visually-hidden">Inches</label>
+              <select id="heightInches" class="form-select"></select>
+            </div>
+          </div>
+          <div class="text-danger small mt-2" id="heightErr" role="alert" hidden></div>
+          <div class="d-flex gap-2 mt-2">
+            <button type="button" class="btn btn-brand flex-fill" id="applyHeightBtn"><i class="bi bi-check2" aria-hidden="true"></i> Apply height</button>
+            <button type="button" class="btn btn-soft" id="clearHeightBtn" aria-label="Clear selected height"><i class="bi bi-x-lg" aria-hidden="true"></i> Clear</button>
+          </div>
+          <div class="note warn" id="heightNote" role="status" hidden></div>
+
+          <div class="divider"></div>
+
+          <h3 class="block-title">2. Girth (inches)</h3>
+          <div id="quickWrap" role="group" aria-label="Quick girth values"></div>
+          <label for="girthInput" class="form-label">Custom girth</label>
+          <div class="input-group has-validation mb-3">
+            <input type="number" id="girthInput" class="form-control" inputmode="decimal" min="0" step="any" placeholder="Enter girth" aria-describedby="girthErr">
+            <span class="input-group-text">in</span>
+            <button type="button" class="btn btn-soft" id="clearGirthBtn" aria-label="Clear girth"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+            <div class="invalid-feedback" id="girthErr"></div>
+          </div>
+          <button type="button" class="btn btn-brand add-btn" id="addLogBtn"><i class="bi bi-plus-lg" aria-hidden="true"></i> Add log</button>
+          <p class="hint mt-2 mb-3" id="addHint"></p>
+          <button type="button" class="btn btn-soft w-100" id="finishLineBtn"><i class="bi bi-flag" aria-hidden="true"></i> Finish current line</button>
+        </div>
+      </section>
+    </div>
+
+    <div>
+      <section class="panel" aria-labelledby="latestTitle">
+        <div class="panel-head">
+          <h2 id="latestTitle"><i class="bi bi-table" aria-hidden="true"></i> Latest logs</h2>
+          <button type="button" class="btn btn-soft btn-sm" data-goto="logs">View all</button>
+        </div>
+        <ul class="log-list padded" id="latestList" aria-label="Latest logs"></ul>
+        <div class="empty-state" id="latestEmpty">
+          <i class="bi bi-tree" aria-hidden="true"></i>
+          <strong>No logs yet</strong>
+          Start by selecting a height and entering the girth of your first log.
+          <div><button type="button" class="btn btn-brand" id="addFirstBtn"><i class="bi bi-plus-lg" aria-hidden="true"></i> Add first log</button></div>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="activityTitle">
+        <div class="panel-head"><h2 id="activityTitle"><i class="bi bi-activity" aria-hidden="true"></i> Recent activity</h2></div>
+        <ul class="activity" id="activityList"></ul>
+        <div class="empty-state" id="activityEmpty" hidden>Nothing has happened yet.</div>
+      </section>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ LOGS ============================ -->
+<section id="view-logs" class="view" aria-label="Logs" hidden>
+  <h2 class="view-title"><span>Logs</span><span class="status-pill" id="logsLinePill">Line 1</span></h2>
+  <section class="panel">
+    <div class="panel-head">
+      <div class="rapid-text fw-semibold" id="logsCounter">Line 1 • 0 Logs • 0.00 cu.ft</div>
+      <div class="d-flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-soft btn-sm" id="logsFinishBtn"><i class="bi bi-flag" aria-hidden="true"></i> Finish line</button>
+        <button type="button" class="btn btn-danger-soft btn-sm" id="clearLogsBtn"><i class="bi bi-trash3" aria-hidden="true"></i> Clear all logs</button>
+      </div>
+    </div>
+    <div class="log-tools">
+      <div class="grow">
+        <label for="searchInput" class="visually-hidden">Search logs</label>
+        <input id="searchInput" type="search" class="form-control" placeholder="Search girth, height or log no." autocomplete="off">
+      </div>
+      <button type="button" class="btn btn-soft" id="filterToggle" aria-expanded="false" aria-controls="filterPanel">
+        <i class="bi bi-funnel" aria-hidden="true"></i> Filter <span class="filter-badge" id="filterBadge" hidden>0</span>
+      </button>
+    </div>
+    <div class="filter-panel" id="filterPanel" hidden>
+      <div><label for="fScope" class="form-label">Show</label>
+        <select id="fScope" class="form-select"><option value="current">Current line</option><option value="all">All lines</option></select></div>
+      <div><label for="fField" class="form-label">Search in</label>
+        <select id="fField" class="form-select"><option value="any">Everything</option><option value="girth">Girth</option><option value="height">Height</option><option value="number">Log number</option></select></div>
+      <div><label for="sortSelect" class="form-label">Sort by</label>
+        <select id="sortSelect" class="form-select">
+          <option value="newest">Newest first</option><option value="oldest">Oldest first</option>
+          <option value="girth-asc">Girth: low to high</option><option value="girth-desc">Girth: high to low</option>
+          <option value="vol-asc">Volume: low to high</option><option value="vol-desc">Volume: high to low</option>
+        </select></div>
+      <div class="d-flex flex-column gap-2">
+        <div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="fPinned"><label class="form-check-label" for="fPinned">Pinned only</label></div>
+        <button type="button" class="btn btn-soft btn-sm" id="filterClear">Clear filters</button>
+      </div>
+    </div>
+    <div class="results-line" id="resultsLine" hidden></div>
+    <ul class="log-list padded" id="logList" aria-label="Logs"></ul>
+    <div class="more-wrap" id="moreWrap" hidden><button type="button" class="btn btn-soft" id="showMoreBtn">Show more</button></div>
+    <div class="empty-state" id="logsEmpty">
+      <i class="bi bi-tree" aria-hidden="true"></i>
+      <strong>No logs yet</strong>
+      Start by selecting a height and entering the girth of your first log.
+      <div><button type="button" class="btn btn-brand" id="emptyAddBtn"><i class="bi bi-plus-lg" aria-hidden="true"></i> Add first log</button></div>
+    </div>
+    <div class="empty-state" id="logsNoMatch" hidden>
+      <i class="bi bi-search" aria-hidden="true"></i>
+      <strong>No logs match your filters</strong>
+      <button type="button" class="btn btn-soft btn-sm" id="noMatchClear">Clear filters</button>
+    </div>
+  </section>
+</section>
+
+<!-- ============================ LINES ============================ -->
+<section id="view-lines" class="view" aria-label="Lines" hidden>
+  <h2 class="view-title"><span>Lines</span></h2>
+  <h3 class="block-title mx-1">Current line</h3>
+  <article class="line-card current" id="curLineCard">
+    <div class="line-top">
+      <div><div class="line-title num-display" id="curLineTitle">Line 1</div></div>
+      <span class="status-pill warn"><i class="bi bi-pencil" aria-hidden="true"></i> In progress</span>
+    </div>
+    <div class="line-metrics">
+      <div><div class="k">Logs</div><div class="v num-display" id="curLineCount">0</div></div>
+      <div><div class="k">Volume</div><div class="v num-display" id="curLineVol">0.00</div></div>
+      <div><div class="k">Avg girth</div><div class="v num-display" id="curLineAvg">0.00</div></div>
+    </div>
+    <div class="line-actions">
+      <button type="button" class="btn btn-brand btn-sm" id="linesFinishBtn"><i class="bi bi-flag" aria-hidden="true"></i> Finish line</button>
+      <button type="button" class="btn btn-soft btn-sm" id="linesRenameBtn"><i class="bi bi-pencil" aria-hidden="true"></i> Change line no.</button>
+      <button type="button" class="btn btn-soft btn-sm" id="linesOpenCur"><i class="bi bi-list-ul" aria-hidden="true"></i> View logs</button>
+    </div>
+  </article>
+
+  <h3 class="block-title mx-1 mt-4">Completed lines</h3>
+  <div class="lines-grid" id="linesList"></div>
+  <div class="empty-state panel" id="linesEmpty"><i class="bi bi-layers" aria-hidden="true"></i><strong>No completed lines yet.</strong>Finish the current line to start the next one.</div>
+  <div class="session-bar mt-3"><div class="txt" id="linesTotalText"></div></div>
+</section>
+
+<!-- ============================ REPORTS ============================ -->
+<section id="view-reports" class="view" aria-label="Reports" hidden>
+  <h2 class="view-title"><span>Reports</span></h2>
+  <div class="view-grid">
+    <section class="panel">
+      <div class="panel-head"><h2><i class="bi bi-download" aria-hidden="true"></i> Export and share</h2></div>
+      <div class="panel-body">
+        <div class="export-grid">
+          <button type="button" class="btn btn-brand" id="exportPdfBtn"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> Export PDF</button>
+          <button type="button" class="btn btn-soft" id="sharePdfBtn"><i class="bi bi-share" aria-hidden="true"></i> Share report</button>
+          <button type="button" class="btn btn-soft" id="exportCsvBtn"><i class="bi bi-filetype-csv" aria-hidden="true"></i> Export CSV</button>
+          <button type="button" class="btn btn-soft" id="printBtn"><i class="bi bi-printer" aria-hidden="true"></i> Print</button>
+        </div>
+        <p class="hint mt-2 mb-0">The PDF lists every line with the line number you gave it. Shortcut: Ctrl/Cmd + E.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2><i class="bi bi-graph-up" aria-hidden="true"></i> Statistics</h2></div>
+      <div class="panel-body">
+        <div class="sum-grid">
+          <div class="sum-card"><div class="k">Total logs</div><div class="v num-display" id="rCount">0</div></div>
+          <div class="sum-card primary"><div class="k">Grand total volume</div><div class="v num-display"><span id="rVolume">0.00</span> <span class="u-label">cu.ft</span></div></div>
+          <div class="sum-card"><div class="k">Total lines</div><div class="v num-display" id="rLines">0</div></div>
+          <div class="sum-card"><div class="k">Average girth</div><div class="v num-display"><span id="rAvg">0</span> in</div></div>
+          <div class="sum-card"><div class="k">Max girth</div><div class="v num-display"><span id="rMax">0</span> in</div></div>
+          <div class="sum-card"><div class="k">Min girth</div><div class="v num-display"><span id="rMin">0</span> in</div></div>
+        </div>
+        <dl class="more-stats">
+          <div><dt>Average volume per log</dt><dd id="rAvgVol">--</dd></div>
+          <div><dt>Largest log</dt><dd id="rLargest">--</dd></div>
+          <div><dt>Smallest log</dt><dd id="rSmallest">--</dd></div>
+          <div><dt>Average logs per line</dt><dd id="rLogsPerLine">--</dd></div>
+          <div><dt>Average volume per line</dt><dd id="rVolPerLine">--</dd></div>
+          <div><dt>Pinned logs</dt><dd id="rPinned">0</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <div class="view-grid two">
+      <section class="panel">
+        <div class="panel-head"><h2><i class="bi bi-bar-chart-line" aria-hidden="true"></i> Volume by line</h2></div>
+        <div class="panel-body" id="volByLine"></div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2><i class="bi bi-bar-chart" aria-hidden="true"></i> Girth distribution</h2></div>
+        <div class="panel-body"><div class="chart-box" id="chartBox"></div><p class="hint mt-2 mb-0">Number of logs at each girth (inches, grouped by whole inch).</p></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head"><h2><i class="bi bi-collection" aria-hidden="true"></i> Saved sessions</h2></div>
+      <div class="panel-body">
+        <p class="hint">Each session is one truck or load. A copy is saved here whenever you start a new session, reset or restore a backup.</p>
+        <button type="button" class="btn btn-soft btn-sm mb-3" id="saveSessionBtn"><i class="bi bi-floppy" aria-hidden="true"></i> Save current session now</button>
+        <div id="histList"></div>
+      </div>
+    </section>
+  </div>
+</section>
+
+<!-- ============================ SETTINGS ============================ -->
+<section id="view-settings" class="view" aria-label="Settings" hidden>
+  <h2 class="view-title"><span>Settings</span></h2>
+  <div class="view-grid two">
+    <div class="view-grid">
+      <section class="panel">
+        <div class="panel-head"><h2><i class="bi bi-palette" aria-hidden="true"></i> Appearance</h2></div>
+        <div class="panel-body">
+          <div class="setting-row"><div><div class="t">Theme</div><div class="d">System follows your device</div></div>
+            <select id="setTheme" class="form-select" aria-label="Theme"><option value="system">System default</option><option value="light">Light</option><option value="dark">Dark</option></select></div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2><i class="bi bi-calculator" aria-hidden="true"></i> Calculation and display</h2></div>
+        <div class="panel-body">
+          <div class="setting-row"><div><div class="t">Volume unit shown</div><div class="d">Display only. Calculations always run in cu.ft.</div></div>
+            <select id="setUnit" class="form-select" aria-label="Volume unit"><option value="cuft">cu.ft</option><option value="cum">cu.m</option></select></div>
+          <div class="setting-row"><div><div class="t">Decimal places</div><div class="d">For volumes and averages</div></div>
+            <select id="setDecimals" class="form-select" aria-label="Decimal places"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
+          <p class="hint mt-3 mb-0">Formula: volume = (girth ÷ 4)² ÷ 144 × length in feet, cut off (not rounded) at 2 decimals.</p>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2><i class="bi bi-sliders" aria-hidden="true"></i> Entry</h2></div>
+        <div class="panel-body">
+          <div style="padding:4px 0 12px">
+            <label for="setQuick" class="t d-block fw-semibold">Quick girth values</label>
+            <div class="hint mb-2">Numbers or ranges separated by commas, e.g. <code>16-45, 48, 50</code></div>
+            <div class="input-group"><input id="setQuick" class="form-control" type="text" autocomplete="off"><button type="button" class="btn btn-soft" id="setQuickReset">Default</button></div>
+            <div class="text-danger small mt-1" id="setQuickErr" hidden></div>
+          </div>
+          <div class="setting-row"><div><div class="t">Focus girth box after adding</div><div class="d">Ready for the next typed measurement</div></div>
+            <div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="setAutoFocus" aria-label="Focus girth box after adding"></div></div>
+          <div class="setting-row"><div><div class="t">Confirm before deleting a log</div><div class="d">Undo is always available</div></div>
+            <div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="setConfirmDelete" aria-label="Confirm before deleting"></div></div>
+          <div class="setting-row"><div><div class="t">Sound and vibration</div><div class="d">Short feedback when a log is added</div></div>
+            <div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="setFeedback" aria-label="Sound and vibration"></div></div>
+          <div class="setting-row"><div><div class="t">Show auto-save status</div><div class="d">“Data saved locally” line on Home</div></div>
+            <div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" role="switch" id="setSaveStatus" aria-label="Show auto-save status"></div></div>
+          <button type="button" class="btn btn-soft btn-sm mt-3" id="setDefaults">Restore default settings</button>
+        </div>
+      </section>
+    </div>
+    <div class="view-grid">
+      <section class="panel">
+        <div class="panel-head"><h2><i class="bi bi-hdd" aria-hidden="true"></i> Data</h2></div>
+        <div class="panel-body">
+          <p class="hint">Your work saves automatically on this device. Back it up before clearing browser data or changing phones.</p>
+          <div class="d-grid gap-2">
+            <button type="button" class="btn btn-soft" id="exportJsonBtn"><i class="bi bi-box-arrow-down" aria-hidden="true"></i> Export current session (JSON)</button>
+            <button type="button" class="btn btn-brand" id="backupBtn"><i class="bi bi-shield-check" aria-hidden="true"></i> Download full backup</button>
+            <button type="button" class="btn btn-soft" id="importBtn"><i class="bi bi-box-arrow-in-up" aria-hidden="true"></i> Import data</button>
+            <input type="file" id="importFile" accept="application/json,.json" hidden>
+            <button type="button" class="btn btn-danger-soft" id="clearDataBtn"><i class="bi bi-exclamation-octagon" aria-hidden="true"></i> Clear all data</button>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2><i class="bi bi-info-circle" aria-hidden="true"></i> About</h2></div>
+        <div class="panel-body">
+          <dl class="kv-list mb-0">
+            <div><dt>Application</dt><dd>Timber Logs Manager</dd></div>
+            <div><dt>Version</dt><dd id="appVersion"></dd></div>
+            <div><dt>Business</dt><dd id="aboutCompany"></dd></div>
+            <div><dt>Storage</dt><dd>This device only (offline-ready)</dd></div>
+          </dl>
+        </div>
+      </section>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<!-- ============================ DIALOGS ============================ -->
+<dialog id="editDlg" aria-labelledby="editTitle">
+  <form id="editForm" class="dlg" novalidate>
+    <h3 id="editTitle">Edit log <span id="editNum"></span></h3>
+    <p class="dlg-sub" id="editSub">Changes apply to this log only.</p>
+    <div class="row g-2">
+      <div class="col-6"><label for="editFeet" class="form-label">Height: feet</label>
+        <input id="editFeet" class="form-control" type="number" inputmode="numeric" min="1" max="99" step="1" aria-describedby="editFeetErr"><div class="invalid-feedback" id="editFeetErr"></div></div>
+      <div class="col-6"><label for="editInches" class="form-label">Height: inches</label>
+        <input id="editInches" class="form-control" type="number" inputmode="numeric" min="0" max="11" step="1" aria-describedby="editInchesErr"><div class="invalid-feedback" id="editInchesErr"></div></div>
+      <div class="col-12"><label for="editGirth" class="form-label">Girth (inches)</label>
+        <input id="editGirth" class="form-control" type="number" inputmode="decimal" min="0" step="any" aria-describedby="editGirthErr"><div class="invalid-feedback" id="editGirthErr"></div></div>
+    </div>
+    <div class="edit-preview" aria-live="polite"><span>Calculated volume</span><strong class="num-display"><span id="editVolume">--</span> <span class="u-label">cu.ft</span></strong></div>
+    <div class="dlg-actions">
+      <button type="button" class="btn btn-soft" id="editCancel">Cancel</button>
+      <button type="submit" class="btn btn-brand">Save changes</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="confirmDlg" aria-labelledby="confirmTitle" aria-describedby="confirmMsg">
+  <form method="dialog" class="dlg">
+    <h3 id="confirmTitle">Are you sure?</h3>
+    <p class="dlg-sub mb-0" id="confirmMsg"></p>
+    <div id="confirmTypeWrap" class="mt-3" hidden>
+      <label for="confirmType" class="form-label">Type <strong id="confirmWord">RESET</strong> to continue</label>
+      <input id="confirmType" class="form-control" type="text" autocomplete="off">
+    </div>
+    <div class="dlg-actions">
+      <button type="submit" value="cancel" class="btn btn-soft" id="confirmCancel">Cancel</button>
+      <button type="submit" value="ok" class="btn btn-brand" id="confirmOk">Confirm</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="lineDlg" aria-labelledby="lineTitle">
+  <form id="lineForm" class="dlg" novalidate>
+    <h3 id="lineTitle">Line number</h3>
+    <p class="dlg-sub" id="lineSub"></p>
+    <label for="lineInput" class="form-label" id="lineLabel">Line number</label>
+    <input id="lineInput" class="form-control" type="text" maxlength="12" autocomplete="off" aria-describedby="lineErr" style="font-size:1.3rem;font-weight:700">
+    <div class="invalid-feedback" id="lineErr"></div>
+    <p class="hint mt-2 mb-0">Use any number or short label (for example 7 or 7A). It appears on screen, in the PDF and in exports.</p>
+    <div class="dlg-actions">
+      <button type="button" class="btn btn-soft" id="lineCancel">Cancel</button>
+      <button type="submit" class="btn btn-brand" id="lineOk">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="lineDetailDlg" aria-labelledby="ldTitle" style="width:min(760px,calc(100vw - 24px))">
+  <div class="dlg">
+    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+      <div><h3 id="ldTitle">Line</h3><p class="dlg-sub mb-2" id="ldSub"></p></div>
+      <span class="status-pill ok" id="ldPill">Completed</span>
+    </div>
+    <div class="line-metrics" id="ldMetrics"></div>
+    <div class="line-actions mb-3">
+      <button type="button" class="btn btn-soft btn-sm" id="ldRename"><i class="bi bi-pencil" aria-hidden="true"></i> Change line no.</button>
+      <button type="button" class="btn btn-soft btn-sm" id="ldReopen"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Reopen line</button>
+    </div>
+    <ul class="log-list padded" id="ldList" style="padding:0" aria-label="Logs in this line"></ul>
+    <div class="dlg-actions"><button type="button" class="btn btn-brand" data-close>Close</button></div>
+  </div>
+</dialog>
+
+<dialog id="infoDlg" aria-labelledby="infoTitle">
+  <div class="dlg">
+    <h3 id="infoTitle">Session information</h3>
+    <p class="dlg-sub">One session is one supplier / vehicle load.</p>
+    <dl class="kv-list" id="infoList"></dl>
+    <div class="dlg-actions"><button type="button" class="btn btn-brand" data-close>Close</button></div>
+  </div>
+</dialog>
+
+<dialog id="contDlg" aria-labelledby="contTitle">
+  <div class="dlg">
+    <h3 id="contTitle">Continue your previous session?</h3>
+    <p class="dlg-sub" id="contText"></p>
+    <div class="dlg-actions">
+      <button type="button" class="btn btn-soft" id="contNew">Start new</button>
+      <button type="button" class="btn btn-brand" id="contContinue">Continue</button>
+    </div>
+  </div>
+</dialog>
+
+<div id="printSheet" aria-hidden="true"></div>
+
+<script>
+(function () {
+'use strict';
+
+/* ============================================================
+   CONSTANTS AND SMALL HELPERS
+   ============================================================ */
+var $ = function (id) { return document.getElementById(id); };
+var APP_VERSION = '2.0.0';
+
+// Business details printed on the PDF / paper copy. Edit here if they change.
+var COMPANY = {
+  name: 'Bhat Wood and Timber Suppliers',
+  proprietor: 'Prop. Mukhtar Ahmad Bhat',
+  contact: 'Contact: 9596663402',
+  address: 'Banimullah Kulgam, J&K',
+  signatory: 'Mukhtar Ahmad Bhat'
+};
+
+var KEYS = {
+  state: 'timberLogsManager.state.v1',        // same key as the previous version, so old data is migrated
+  settings: 'timberLogsManager.settings.v1',
+  sessions: 'timberLogsManager.sessions.v1',
+  theme: 'timberLogsManager.theme'
+};
+var DEFAULT_QUICK = '16-45';
+var PRESETS = [{ feet: 10, inches: 0 }, { feet: 10, inches: 6 }, { feet: 11, inches: 0 }, { feet: 11, inches: 6 }, { feet: 12, inches: 0 }];
+var UNITS = { cuft: { label: 'cu.ft', factor: 1 }, cum: { label: 'cu.m', factor: 0.028316846592 } };
+var MAX_GIRTH = 500, MAX_FEET = 99, MAX_SESSIONS = 50, MAX_ACTIVITY = 100, PAGE_SIZE = 100;
+var DEFAULT_SETTINGS = {
+  decimals: 2, unit: 'cuft', quickGirths: DEFAULT_QUICK, confirmDelete: false, feedback: false,
+  autoFocus: true, rapid: false, showSaveStatus: true, recentHeights: []
+};
+
+function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function str(v) { return typeof v === 'string' ? v : ''; }
+function pad2(n) { return String(n).padStart(2, '0'); }
+function nowISO() { return new Date().toISOString(); }
+function localDate(iso) {
+  var d = iso ? new Date(iso) : new Date();
+  if (isNaN(d)) d = new Date();
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+function shortTime(iso) { var d = new Date(iso); return isNaN(d) ? '' : pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+function longDateTime(iso) { var d = new Date(iso); return isNaN(d) ? '--' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + shortTime(iso); }
+function formatHeight(f, i) { return f + "' " + i + '"'; }
+
+/* ============================================================
+   CALC: business-critical volume formula (UNCHANGED from the original)
+   Quarter-girth formula, truncated (not rounded) to 2 decimals,
+   with a floating-point guard. Everything else only displays this value.
+   ============================================================ */
+var Calc = {
+  volume: function (g, f, i) {
+    let ht = f + i / 12;
+    let q = g / 4;
+    return Math.floor((((q * q) / 144) * ht + 1e-9) * 100) / 100;
+  }
+};
+var calculateVolume = Calc.volume;
+
+/* ============================================================
+   STORE: safe localStorage wrapper
+   ============================================================ */
+var Store = {
+  read: function (key, fallback) { try { var r = localStorage.getItem(key); return r ? JSON.parse(r) : fallback; } catch (e) { return fallback; } },
+  write: function (key, val) { try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return false; } },
+  remove: function (key) { try { localStorage.removeItem(key); } catch (e) {} }
+};
+
+/* ============================================================
+   TOAST + FEEDBACK + CONFIRM
+   ============================================================ */
+var Toast = {
+  show: function (message, type, opts) {
+    type = type || 'success'; opts = opts || {};
+    var duration = opts.duration || ((type === 'warn' || type === 'error') ? 4200 : 2600);
+    var box = $('toasts');
+    if (opts.key) box.querySelectorAll('[data-key="' + opts.key + '"]').forEach(function (n) { n.remove(); });
+    var t = document.createElement('div');
+    t.className = 'toast-item toast-' + type;
+    if (opts.key) t.dataset.key = opts.key;
+    var icon = { success: 'check-circle-fill', warn: 'exclamation-triangle-fill', error: 'x-circle-fill', info: 'info-circle-fill' }[type] || 'info-circle-fill';
+    t.innerHTML = '<i class="bi bi-' + icon + '" aria-hidden="true"></i><span class="toast-msg"></span>';
+    t.querySelector('.toast-msg').textContent = message;
+    if (opts.action) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'toast-action'; b.textContent = opts.action.label;
+      b.addEventListener('click', function () { t.remove(); opts.action.onClick(); });
+      t.appendChild(b);
+    }
+    box.appendChild(t);
+    while (box.children.length > 3) box.firstChild.remove();
+    setTimeout(function () { t.remove(); }, duration);
+  }
+};
+function toast(m, t, o) { Toast.show(m, t, o); }
+
+var audioCtx = null;
+function feedbackTick(kind) {
+  if (!settings.feedback) return;
+  try { if (navigator.vibrate) navigator.vibrate(kind === 'ok' ? 15 : [30, 40, 30]); } catch (e) {}
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audioCtx = audioCtx || new AC();
+    var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = kind === 'ok' ? 880 : 220; g.gain.value = 0.04;
+    o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.07);
+  } catch (e) {}
+}
+
+function confirmDialog(opts) {
+  return new Promise(function (resolve) {
+    var dlg = $('confirmDlg'), ok = $('confirmOk'), typeInp = $('confirmType');
+    $('confirmTitle').textContent = opts.title || 'Are you sure?';
+    $('confirmMsg').textContent = opts.message || '';
+    ok.textContent = opts.confirmText || 'Confirm';
+    ok.className = 'btn ' + (opts.danger ? 'btn-danger-solid' : 'btn-brand');
+    if (opts.requireText) {
+      $('confirmWord').textContent = opts.requireText;
+      $('confirmTypeWrap').hidden = false; typeInp.value = ''; ok.disabled = true;
+      typeInp.oninput = function () { ok.disabled = typeInp.value.trim() !== opts.requireText; };
+      typeInp.onkeydown = function (e) { if (e.key === 'Enter') e.preventDefault(); };
+    } else { $('confirmTypeWrap').hidden = true; ok.disabled = false; typeInp.oninput = null; }
+    dlg.returnValue = '';
+    dlg.addEventListener('close', function () { resolve(dlg.returnValue === 'ok'); }, { once: true });
+    dlg.showModal();
+    (opts.requireText ? typeInp : $('confirmCancel')).focus();
+  });
+}
+
+/* ============================================================
+   STATE
+   ============================================================ */
+var settings = sanitizeSettings(Store.read(KEYS.settings, {}));
+var session;                       // the current load
+var deletedStack = [];             // recently deleted logs, for Undo
+var ui = {
+  view: 'home', heightPending: false, flashId: null, typedGirth: false, supplierBackup: null,
+  scope: 'current', sort: 'newest', filter: { field: 'any', q: '', pinned: false }, logLimit: PAGE_SIZE,
+  detailLineId: null, saveOk: true, lastSaved: null
+};
+var quickValues = [];
+var editingId = null, lineCfg = null;
+
+function sanitizeSettings(raw) {
+  raw = raw && typeof raw === 'object' ? raw : {};
+  var s = Object.assign({}, DEFAULT_SETTINGS, raw);
+  s.decimals = [1, 2, 3].indexOf(Number(s.decimals)) >= 0 ? Number(s.decimals) : 2;
+  s.unit = UNITS[s.unit] ? s.unit : 'cuft';
+  s.quickGirths = typeof s.quickGirths === 'string' && s.quickGirths.trim() ? s.quickGirths : DEFAULT_QUICK;
+  ['confirmDelete', 'feedback', 'autoFocus', 'rapid', 'showSaveStatus'].forEach(function (k) { s[k] = !!s[k]; });
+  s.recentHeights = (Array.isArray(s.recentHeights) ? s.recentHeights : []).filter(function (h) {
+    return h && Number.isInteger(h.feet) && h.feet >= 1 && h.feet <= 30 && Number.isInteger(h.inches) && h.inches >= 0 && h.inches <= 11;
+  }).slice(0, 5);
+  return s;
+}
+
+function newLine(number) { return { id: uid(), number: String(number), createdAt: nowISO(), completedAt: null, logs: [] }; }
+function newSession() {
+  var s = {
+    id: uid(), createdAt: nowISO(),
+    supplier: { name: '', vehicle: '', driver: '', logType: '' }, supplierSaved: false,
+    currentHeight: null, lines: [newLine('1')], activity: []
+  };
+  s.activity.push({ t: s.createdAt, text: 'Session started' });
+  return s;
+}
+
+/* Turn anything (saved state, imported file, older version) into a valid session */
+function sanitizeSession(raw) {
+  var s = newSession(); s.activity = [];
+  if (!raw || typeof raw !== 'object') { s.activity.push({ t: s.createdAt, text: 'Session started' }); return s; }
+  if (typeof raw.id === 'string' && raw.id) s.id = raw.id;
+  if (typeof raw.createdAt === 'string' && !isNaN(new Date(raw.createdAt))) s.createdAt = raw.createdAt;
+  if (typeof raw.savedAt === 'string') s.savedAt = raw.savedAt;
+  var sp = raw.supplier || {};
+  s.supplier = { name: str(sp.name), vehicle: str(sp.vehicle), driver: str(sp.driver), logType: str(sp.logType) };
+  s.supplierSaved = !!raw.supplierSaved && !!s.supplier.name.trim() && !!s.supplier.vehicle.trim() && !!s.supplier.driver.trim();
+
+  function cleanLogs(list) {
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function (l) {
+      if (!l) return;
+      var feet = Number(l.feet), inches = Number(l.inches), girth = Number(l.girth);
+      if (Number.isInteger(feet) && feet >= 1 && Number.isInteger(inches) && inches >= 0 && inches <= 11 && isFinite(girth) && girth > 0) {
+        out.push({
+          id: (typeof l.id === 'string' && l.id) ? l.id : uid(), pinned: !!l.pinned, feet: feet, inches: inches, girth: girth,
+          volume: calculateVolume(girth, feet, inches),     // always recomputed with the original formula
+          createdAt: typeof l.createdAt === 'string' ? l.createdAt : s.createdAt
+        });
+      }
+    });
+    return out;
+  }
+  var lines = [];
+  if (Array.isArray(raw.lines) && raw.lines.length) {
+    raw.lines.forEach(function (ln, i) {
+      if (!ln) return;
+      lines.push({
+        id: (typeof ln.id === 'string' && ln.id) ? ln.id : uid(),
+        number: str(ln.number).trim().slice(0, 12) || String(i + 1),
+        createdAt: typeof ln.createdAt === 'string' ? ln.createdAt : s.createdAt,
+        completedAt: typeof ln.completedAt === 'string' ? ln.completedAt : null,
+        logs: cleanLogs(ln.logs)
+      });
+    });
+  } else if (Array.isArray(raw.logs)) {           // migrate the previous single-list version
+    var one = newLine('1'); one.logs = cleanLogs(raw.logs); lines.push(one);
+  }
+  if (!lines.length) lines.push(newLine('1'));
+  // unique line numbers
+  var seen = {};
+  lines.forEach(function (ln) {
+    var base = ln.number, k = base.toLowerCase(), n = 2;
+    while (seen[ln.number.toLowerCase()]) ln.number = base + '-' + (n++);
+    seen[ln.number.toLowerCase()] = true;
+  });
+  // exactly one open line, and it is the last one
+  lines.forEach(function (ln, i) { if (i < lines.length - 1 && !ln.completedAt) ln.completedAt = ln.createdAt; });
+  if (lines[lines.length - 1].completedAt) {
+    var nums = lines.map(function (l) { return parseInt(l.number, 10); }).filter(isFinite);
+    lines.push(newLine((nums.length ? Math.max.apply(null, nums) : 0) + 1));
+  }
+  s.lines = lines;
+  var h = raw.currentHeight;
+  if (h && Number.isInteger(Number(h.feet)) && Number(h.feet) >= 1 && Number.isInteger(Number(h.inches)) && Number(h.inches) >= 0 && Number(h.inches) <= 11) {
+    s.currentHeight = { feet: Number(h.feet), inches: Number(h.inches) };
+  }
+  if (Array.isArray(raw.activity)) {
+    s.activity = raw.activity.filter(function (a) { return a && typeof a.text === 'string'; })
+      .map(function (a) { return { t: typeof a.t === 'string' ? a.t : s.createdAt, text: a.text.slice(0, 200) }; }).slice(-MAX_ACTIVITY);
+  }
+  if (!s.activity.length) s.activity.push({ t: s.createdAt, text: 'Session started' });
+  return s;
+}
+
+function curLine() { return session.lines[session.lines.length - 1]; }
+function lineById(id) { return session.lines.find(function (l) { return l.id === id; }); }
+function lineLabel(l) { return 'Line ' + l.number; }
+function sessionHasContent(s) { return s.lines.some(function (l) { return l.logs.length > 0; }); }
+
+/* All logs in entry order: line by line. serial = overall S.No */
+function allEntries() {
+  var out = [], serial = 0;
+  session.lines.forEach(function (line) {
+    line.logs.forEach(function (log, idx) { out.push({ log: log, line: line, idx: idx, serial: ++serial }); });
+  });
+  return out;
+}
+function findRef(id) {
+  for (var i = 0; i < session.lines.length; i++) {
+    var line = session.lines[i], idx = line.logs.findIndex(function (l) { return l.id === id; });
+    if (idx >= 0) return { line: line, log: line.logs[idx], idx: idx };
+  }
+  return null;
+}
+function lineStats(line) {
+  var vol = line.logs.reduce(function (s, l) { return s + l.volume; }, 0);
+  var tg = line.logs.reduce(function (s, l) { return s + l.girth; }, 0);
+  return { count: line.logs.length, volume: vol, avgGirth: line.logs.length ? tg / line.logs.length : 0 };
+}
+function computeStats(sess) {
+  var s = sess || session, entries = [], serial = 0;
+  s.lines.forEach(function (line) { line.logs.forEach(function (log, idx) { entries.push({ log: log, line: line, idx: idx, serial: ++serial }); }); });
+  var st = { count: entries.length, volume: 0, totalGirth: 0, maxGirth: 0, minGirth: 0, pinned: 0, largest: null, smallest: null };
+  var max = -Infinity, min = Infinity;
+  entries.forEach(function (e) {
+    st.volume += e.log.volume; st.totalGirth += e.log.girth;
+    if (e.log.girth > max) max = e.log.girth;
+    if (e.log.girth < min) min = e.log.girth;
+    if (e.log.pinned) st.pinned++;
+    if (!st.largest || e.log.volume > st.largest.log.volume) st.largest = e;
+    if (!st.smallest || e.log.volume < st.smallest.log.volume) st.smallest = e;
+  });
+  if (st.count) { st.maxGirth = max; st.minGirth = min; }
+  st.avgGirth = st.count ? st.totalGirth / st.count : 0;
+  st.avgVolume = st.count ? st.volume / st.count : 0;
+  st.linesWithLogs = s.lines.filter(function (l) { return l.logs.length > 0; });
+  st.totalLines = st.linesWithLogs.length;
+  st.completedLines = s.lines.filter(function (l) { return l.completedAt; }).length;
+  return st;
+}
+
+/* Display helpers (the stored values never change, only how they are shown) */
+function unitLabel() { return UNITS[settings.unit].label; }
+function fmtV(v) { return (Number(v) * UNITS[settings.unit].factor).toFixed(settings.decimals); }
+function fmtVU(v) { return fmtV(v) + ' ' + unitLabel(); }
+function fmtG(v) { return Number(v).toFixed(settings.decimals); }
+
+/* ============================================================
+   PERSISTENCE (auto-save)
+   ============================================================ */
+function saveState() {
+  var ok = Store.write(KEYS.state, { session: session, savedAt: nowISO() });
+  ui.saveOk = ok; if (ok) ui.lastSaved = new Date();
+  renderSaveStatus();
+  return ok;
+}
+function saveSettings() { Store.write(KEYS.settings, settings); }
+var draftTimer = null;
+function saveDraftSoon() { clearTimeout(draftTimer); draftTimer = setTimeout(saveState, 300); }
+function renderSaveStatus() {
+  var el = $('saveStatus');
+  if (!ui.saveOk) { el.className = 'save-status err'; el.textContent = '⚠ Could not save on this device. Export a PDF or backup to keep your work.'; return; }
+  el.className = 'save-status';
+  el.textContent = (settings.showSaveStatus && ui.lastSaved) ? '✓ Data saved locally · ' + ui.lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+}
+/* Read the saved session; keep a copy of unreadable data instead of silently discarding it */
+function loadSavedSession() {
+  var raw = null;
+  try { raw = localStorage.getItem(KEYS.state); } catch (e) {}
+  if (!raw) return { session: newSession(), hadData: false };
+  try {
+    var parsed = JSON.parse(raw);
+    var s = sanitizeSession(parsed && parsed.session);
+    return { session: s, hadData: sessionHasContent(s) || s.supplierSaved || !!s.supplier.name };
+  } catch (e) {
+    try { localStorage.setItem(KEYS.state + '.corrupt', raw); } catch (e2) {}
+    setTimeout(function () { toast('Saved data could not be read. A copy was kept and a new session started.', 'error', { duration: 6000 }); }, 300);
+    return { session: newSession(), hadData: false };
+  }
+}
+function getHistory() { var h = Store.read(KEYS.sessions, []); return Array.isArray(h) ? h : []; }
+function setHistory(h) { return Store.write(KEYS.sessions, h.slice(0, MAX_SESSIONS)); }
+function archiveSession(s) {
+  var snap = JSON.parse(JSON.stringify(s)); snap.savedAt = nowISO();
+  var h = getHistory().filter(function (x) { return x.id !== snap.id; });
+  h.unshift(snap); return setHistory(h);
+}
+
+function addActivity(text) {
+  session.activity.push({ t: nowISO(), text: text });
+  if (session.activity.length > MAX_ACTIVITY) session.activity.shift();
+}
+/* Save + redraw after every change to the data */
+function commit() { saveState(); renderAll(); }
+
+/* ============================================================
+   RENDERING
+   ============================================================ */
+function renderAll() {
+  var S = computeStats();
+  renderUnits(); renderHeader(S); renderDashboard(S); renderSession(); renderSupplier();
+  renderEntry(S); renderLatest(); renderActivity(); renderLogsView(S); renderLinesView(S);
+  if (ui.view === 'reports') renderReports(S);
+  if ($('lineDetailDlg').open) renderLineDetail();
+  if ($('infoDlg').open) renderInfo(S);
+}
+function renderUnits() { document.querySelectorAll('.u-label').forEach(function (el) { el.textContent = unitLabel(); }); }
+function heightText() { return session.currentHeight ? formatHeight(session.currentHeight.feet, session.currentHeight.inches) : '--'; }
+function setPill(el, cls, html) { el.className = 'status-pill' + (cls ? ' ' + cls : ''); el.innerHTML = html; }
+
+function renderHeader(S) {
+  $('hdrDate').textContent = new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  $('hdrSupplier').textContent = session.supplier.name.trim() || 'No supplier yet';
+  var cl = curLine();
+  $('hdrLine').textContent = lineLabel(cl) + ' · ' + cl.logs.length + (cl.logs.length === 1 ? ' log' : ' logs');
+  $('hdrVolume').textContent = fmtVU(S.volume);
+}
+function renderDashboard(S) {
+  $('dLogs').textContent = S.count;
+  $('dVolume').textContent = fmtV(S.volume);
+  $('dLine').textContent = lineLabel(curLine());
+  $('dDone').textContent = S.completedLines;
+  $('dAvg').textContent = fmtG(S.avgGirth);
+  $('dHeight').textContent = heightText();
+}
+function renderSession() {
+  var n = session.lines.length;
+  $('sessText').innerHTML = 'Session started <strong>' + esc(longDateTime(session.createdAt)) + '</strong> · ' + n + (n === 1 ? ' line' : ' lines');
+}
+
+function renderSupplier() {
+  var saved = session.supplierSaved, s = session.supplier;
+  $('supplierSummary').hidden = !saved;
+  $('supplierForm').hidden = saved;
+  $('cancelSupplierBtn').hidden = !ui.supplierBackup;
+  if (saved) {
+    $('sumSupplier').textContent = s.name; $('sumVehicle').textContent = s.vehicle;
+    $('sumDriver').textContent = s.driver; $('sumLogType').textContent = s.logType || '--';
+    setPill($('supplierPill'), 'ok', '<i class="bi bi-check-circle-fill" aria-hidden="true"></i> Supplier details saved');
+  } else {
+    setPill($('supplierPill'), 'warn', '<i class="bi bi-pencil" aria-hidden="true"></i> Not saved');
+  }
+}
+
+/* ---- Quick entry panel ---- */
+function renderEntry() {
+  var applied = !!session.currentHeight && !ui.heightPending, cl = curLine(), st = lineStats(cl);
+  $('rapidToggle').checked = settings.rapid;
+  $('rapidText').textContent = lineLabel(cl) + ' • ' + st.count + (st.count === 1 ? ' Log' : ' Logs') + ' • ' + fmtVU(st.volume);
+  $('currentHeightText').textContent = heightText();
+  var note = $('heightNote');
+  if (ui.heightPending) {
+    setPill($('heightPill'), 'warn', '<i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i> Apply to continue');
+    note.hidden = false;
+    note.innerHTML = '<i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span>Height changed. Tap Apply height to continue.' +
+      (allEntries().length ? ' The new height applies to logs you add from now on. Existing logs keep their own height (use Edit to change one).' : '') + '</span>';
+  } else if (applied) {
+    setPill($('heightPill'), 'ok', '<i class="bi bi-check-circle-fill" aria-hidden="true"></i> Height applied');
+    note.hidden = true;
+  } else { setPill($('heightPill'), '', 'Not set'); note.hidden = true; }
+
+  // Presets + recents
+  var cur = session.currentHeight;
+  function chipHTML(h) {
+    var on = applied && cur && cur.feet === h.feet && cur.inches === h.inches;
+    return '<button type="button" class="hchip' + (on ? ' active' : '') + '" data-hf="' + h.feet + '" data-hi="' + h.inches + '" aria-pressed="' + on + '">' + formatHeight(h.feet, h.inches) + '</button>';
+  }
+  $('presetRow').innerHTML = PRESETS.map(chipHTML).join('');
+  var recents = settings.recentHeights;
+  $('recentWrap').hidden = !recents.length;
+  $('recentRow').innerHTML = recents.map(chipHTML).join('');
+
+  // Same behaviour as the original: changing the height locks entry until Apply is pressed
+  $('girthInput').disabled = ui.heightPending;
+  $('addLogBtn').disabled = ui.heightPending;
+  $('quickWrap').querySelectorAll('button').forEach(function (b) { b.disabled = !applied; });
+  $('addHint').textContent = applied
+    ? (settings.rapid ? 'Rapid entry is on: tapping a girth adds the log straight away.' : 'Tap a girth or type one, then press Add log (or Enter).')
+    : (ui.heightPending ? 'Apply the new height to keep adding logs.' : 'Choose a height first, then add logs.');
+  markQuickActive();
+  $('finishLineBtn').disabled = false;
+}
+
+/* ---- Quick girth grid (grouped by tens) ---- */
+function parseGirthList(text) {
+  var out = new Set();
+  String(text).split(/[\s,;]+/).forEach(function (tok) {
+    if (!tok) return;
+    var m = tok.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/);
+    if (m) {
+      var a = +m[1], b = +m[2];
+      if (a > b) { var t = a; a = b; b = t; }
+      for (var g = a; g <= b && g <= MAX_GIRTH && out.size < 120; g += 1) if (g > 0) out.add(+g.toFixed(2));
+    } else {
+      var n = Number(tok);
+      if (isFinite(n) && n > 0 && n <= MAX_GIRTH && out.size < 120) out.add(n);
+    }
+  });
+  return Array.from(out).sort(function (a, b) { return a - b; });
+}
+function buildQuickGirths() {
+  quickValues = parseGirthList(settings.quickGirths);
+  if (!quickValues.length) quickValues = parseGirthList(DEFAULT_QUICK);
+  var groups = new Map();
+  quickValues.forEach(function (g) { var k = Math.floor(g / 10) * 10; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(g); });
+  var html = '';
+  groups.forEach(function (vals) {
+    var label = vals.length > 1 ? vals[0] + '–' + vals[vals.length - 1] + ' in' : vals[0] + ' in';
+    html += '<div class="quick-group"><div class="quick-group-label">' + label + '</div><div class="quick-grid">' +
+      vals.map(function (g) { return '<button type="button" class="quick-girth-btn" data-g="' + g + '" aria-label="Girth ' + g + ' inches">' + g + '</button>'; }).join('') +
+      '</div></div>';
+  });
+  $('quickWrap').innerHTML = html;
+  if (session) renderEntry();
+}
+function markQuickActive() {
+  var v = parseFloat($('girthInput').value);
+  $('quickWrap').querySelectorAll('button').forEach(function (b) {
+    var on = isFinite(v) && Number(b.dataset.g) === v;
+    b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+
+/* ---- Log cards ---- */
+function logItemHTML(e, showLine) {
+  var l = e.log, num = pad2(e.idx + 1);
+  return '<li class="log-item' + (l.pinned ? ' is-pinned' : '') + (ui.flashId === l.id ? ' flash' : '') + '" data-id="' + esc(l.id) + '">' +
+    '<div class="log-num"><span class="tag">LOG</span><span class="n num-display">#' + num + (l.pinned ? '<i class="bi bi-pin-fill pin-mark" aria-hidden="true"></i><span class="visually-hidden"> Pinned</span>' : '') + '</span>' +
+      (showLine ? '<span class="line-tag">' + esc(lineLabel(e.line)) + '</span>' : '') + '</div>' +
+    '<div class="log-cell"><span class="lbl">Height</span><span class="val">' + formatHeight(l.feet, l.inches) + '</span></div>' +
+    '<div class="log-cell"><span class="lbl">Girth</span><span class="val">' + l.girth + '"</span></div>' +
+    '<div class="log-cell"><span class="lbl">Volume</span><span class="val">' + fmtV(l.volume) + ' <small>' + unitLabel() + '</small></span></div>' +
+    '<div class="log-actions">' +
+      '<button type="button" class="btn btn-soft btn-sm" data-act="edit" aria-label="Edit log #' + num + '" title="Edit"><i class="bi bi-pencil" aria-hidden="true"></i><span class="act-text">Edit</span></button>' +
+      '<button type="button" class="btn btn-soft btn-sm" data-act="pin" aria-pressed="' + l.pinned + '" aria-label="' + (l.pinned ? 'Unpin' : 'Pin') + ' log #' + num + '" title="' + (l.pinned ? 'Unpin' : 'Pin') + '"><i class="bi bi-pin' + (l.pinned ? '-fill' : '') + '" aria-hidden="true"></i><span class="act-text">' + (l.pinned ? 'Unpin' : 'Pin') + '</span></button>' +
+      '<button type="button" class="btn btn-danger-soft btn-sm" data-act="delete" aria-label="Delete log #' + num + '" title="Delete"><i class="bi bi-trash3" aria-hidden="true"></i><span class="act-text">Delete</span></button>' +
+    '</div></li>';
+}
+function renderLatest() {
+  var cl = curLine();
+  var items = cl.logs.slice(-5).reverse().map(function (log) { return logItemHTML({ log: log, line: cl, idx: cl.logs.indexOf(log) }, false); });
+  $('latestList').innerHTML = items.join('');
+  $('latestList').hidden = !items.length;
+  $('latestEmpty').hidden = items.length > 0;
+}
+function renderActivity() {
+  var items = session.activity.slice(-8).reverse();
+  $('activityList').innerHTML = items.map(function (a) { return '<li><span class="time">' + esc(shortTime(a.t)) + '</span><span>' + esc(a.text) + '</span></li>'; }).join('');
+  $('activityEmpty').hidden = items.length > 0;
+}
+
+/* ---- Logs view: search / filter / sort never change the stored data ---- */
+function matchesFilter(e) {
+  var f = ui.filter;
+  if (f.pinned && !e.log.pinned) return false;
+  var q = f.q.trim().toLowerCase();
+  if (!q) return true;
+  var l = e.log;
+  var girthMatch = String(l.girth).startsWith(q.replace(/^#/, ''));
+  var qh = q.replace(/"/g, '').replace(/\s*(ft|feet)\s*/g, "'").replace(/\s+/g, "'").replace(/'+/g, "'").replace(/'$/, '');
+  var heightMatch = /^\d+$/.test(qh) ? l.feet === Number(qh) : (l.feet + "'" + l.inches).startsWith(qh);
+  var numberMatch = String(e.idx + 1) === q.replace(/^#/, '').replace(/^0+(?=\d)/, '');
+  if (f.field === 'girth') return girthMatch;
+  if (f.field === 'height') return heightMatch;
+  if (f.field === 'number') return numberMatch;
+  return girthMatch || heightMatch || numberMatch;
+}
+function visibleEntries() {
+  var list = allEntries();
+  if (ui.scope === 'current') { var id = curLine().id; list = list.filter(function (e) { return e.line.id === id; }); }
+  list = list.filter(matchesFilter);
+  var cmp = {
+    'newest': function (a, b) { return b.serial - a.serial; },
+    'oldest': function (a, b) { return a.serial - b.serial; },
+    'girth-asc': function (a, b) { return a.log.girth - b.log.girth || a.serial - b.serial; },
+    'girth-desc': function (a, b) { return b.log.girth - a.log.girth || a.serial - b.serial; },
+    'vol-asc': function (a, b) { return a.log.volume - b.log.volume || a.serial - b.serial; },
+    'vol-desc': function (a, b) { return b.log.volume - a.log.volume || a.serial - b.serial; }
+  }[ui.sort];
+  return list.sort(cmp);          // sorts a copy; session data is untouched
+}
+function activeFilterCount() { return (ui.filter.q.trim() ? 1 : 0) + (ui.filter.pinned ? 1 : 0) + (ui.scope === 'all' ? 1 : 0); }
+function renderLogsView() {
+  var cl = curLine(), st = lineStats(cl);
+  $('logsLinePill').textContent = lineLabel(cl);
+  $('logsCounter').textContent = lineLabel(cl) + ' • ' + st.count + (st.count === 1 ? ' Log' : ' Logs') + ' • ' + fmtVU(st.volume);
+  var totalInScope = ui.scope === 'all' ? allEntries().length : cl.logs.length;
+  var vis = totalInScope ? visibleEntries() : [];
+  var shown = vis.slice(0, ui.logLimit);
+  $('logList').innerHTML = shown.map(function (e) { return logItemHTML(e, ui.scope === 'all'); }).join('');
+  ui.flashId = null;
+  $('logList').hidden = !shown.length;
+  $('logsEmpty').hidden = totalInScope > 0;
+  $('logsNoMatch').hidden = !(totalInScope > 0 && vis.length === 0);
+  $('moreWrap').hidden = vis.length <= shown.length;
+  $('showMoreBtn').textContent = 'Show ' + Math.min(PAGE_SIZE, vis.length - shown.length) + ' more (' + (vis.length - shown.length) + ' hidden)';
+  var n = activeFilterCount(), badge = $('filterBadge');
+  badge.hidden = !n; badge.textContent = n;
+  var line = $('resultsLine');
+  line.hidden = !(n > 0 && totalInScope > 0);
+  line.textContent = 'Showing ' + vis.length + ' of ' + totalInScope + (totalInScope === 1 ? ' log' : ' logs');
+  $('clearLogsBtn').disabled = cl.logs.length === 0;
+}
+
+/* ---- Lines view ---- */
+function lineCardHTML(line) {
+  var st = lineStats(line);
+  return '<article class="line-card" data-line="' + esc(line.id) + '">' +
+    '<div class="line-top"><div class="line-title num-display">LINE ' + esc(line.number) + '</div><span class="status-pill ok"><i class="bi bi-check-circle-fill" aria-hidden="true"></i> Completed</span></div>' +
+    '<div class="line-metrics"><div><div class="k">Logs</div><div class="v num-display">' + st.count + '</div></div>' +
+    '<div><div class="k">Volume</div><div class="v num-display">' + fmtV(st.volume) + ' <small>' + unitLabel() + '</small></div></div>' +
+    '<div><div class="k">Avg girth</div><div class="v num-display">' + fmtG(st.avgGirth) + '"</div></div></div>' +
+    '<button type="button" class="btn btn-soft btn-sm" data-openline="' + esc(line.id) + '" aria-label="Open Line ' + esc(line.number) + '"><i class="bi bi-folder2-open" aria-hidden="true"></i> Open line</button></article>';
+}
+function renderLinesView(S) {
+  var cl = curLine(), st = lineStats(cl);
+  $('curLineTitle').textContent = lineLabel(cl);
+  $('curLineCount').textContent = st.count;
+  $('curLineVol').textContent = fmtVU(st.volume);
+  $('curLineAvg').textContent = fmtG(st.avgGirth) + '"';
+  var done = session.lines.filter(function (l) { return l.completedAt; });
+  $('linesList').innerHTML = done.map(lineCardHTML).join('');
+  $('linesEmpty').hidden = done.length > 0;
+  $('linesTotalText').innerHTML = 'Grand total (current + completed lines): <strong>' + esc(fmtVU(S.volume)) + '</strong> · ' + S.count + (S.count === 1 ? ' log' : ' logs');
+}
+function renderLineDetail() {
+  var line = lineById(ui.detailLineId);
+  if (!line) { $('lineDetailDlg').close(); return; }
+  var st = lineStats(line), isCur = line === curLine();
+  $('ldTitle').textContent = lineLabel(line);
+  $('ldSub').textContent = 'Started ' + longDateTime(line.createdAt) + (line.completedAt ? ' · Finished ' + longDateTime(line.completedAt) : '');
+  setPill($('ldPill'), isCur ? 'warn' : 'ok', isCur ? 'In progress' : 'Completed');
+  $('ldMetrics').innerHTML =
+    '<div><div class="k">Logs</div><div class="v num-display">' + st.count + '</div></div>' +
+    '<div><div class="k">Volume</div><div class="v num-display">' + fmtVU(st.volume) + '</div></div>' +
+    '<div><div class="k">Avg girth</div><div class="v num-display">' + fmtG(st.avgGirth) + '"</div></div>';
+  $('ldReopen').hidden = isCur;
+  $('ldList').innerHTML = line.logs.slice().map(function (log, idx) { return { log: log, line: line, idx: idx }; }).reverse()
+    .map(function (e) { return logItemHTML(e, false); }).join('') || '<li class="empty-state">No logs in this line.</li>';
+}
+
+/* ---- Reports view ---- */
+function renderReports(S) {
+  $('rCount').textContent = S.count; $('rVolume').textContent = fmtV(S.volume); $('rLines').textContent = S.totalLines;
+  $('rAvg').textContent = S.count ? fmtG(S.avgGirth) : 0; $('rMax').textContent = S.maxGirth; $('rMin').textContent = S.minGirth;
+  function describe(e) { return e ? lineLabel(e.line) + ' #' + pad2(e.idx + 1) + ' · ' + fmtVU(e.log.volume) + ' (' + formatHeight(e.log.feet, e.log.inches) + ', ' + e.log.girth + '")' : '--'; }
+  $('rAvgVol').textContent = S.count ? fmtVU(S.avgVolume) : '--';
+  $('rLargest').textContent = describe(S.largest); $('rSmallest').textContent = describe(S.smallest);
+  $('rLogsPerLine').textContent = S.totalLines ? (S.count / S.totalLines).toFixed(1) : '--';
+  $('rVolPerLine').textContent = S.totalLines ? fmtVU(S.volume / S.totalLines) : '--';
+  $('rPinned').textContent = S.pinned;
+  renderVolByLine(S); renderGirthChart(); renderHistory();
+}
+function renderVolByLine(S) {
+  var box = $('volByLine'), lines = S.linesWithLogs;
+  if (!lines.length) { box.innerHTML = '<div class="chart-empty">Add logs to see volume by line.</div>'; return; }
+  var vols = lines.map(function (l) { return lineStats(l).volume; }), max = Math.max.apply(null, vols) || 1;
+  box.innerHTML = lines.map(function (l, i) {
+    return '<div class="hbar-row"><span class="fw-semibold">Line ' + esc(l.number) + '</span><div class="hbar-track"><div class="hbar" style="width:' + (vols[i] / max * 100).toFixed(1) + '%"></div></div><span class="hbar-val">' + esc(fmtVU(vols[i])) + '</span></div>';
+  }).join('');
+}
+function niceCeil(v) { if (v <= 0) return 1; var p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; }
+function renderGirthChart() {
+  var box = $('chartBox'), entries = allEntries();
+  if (!entries.length) { box.innerHTML = '<div class="chart-empty">Add logs to see the girth distribution.</div>'; return; }
+  var bins = new Map();
+  entries.forEach(function (e) { var k = Math.floor(e.log.girth); bins.set(k, (bins.get(k) || 0) + 1); });
+  var keys = Array.from(bins.keys()), lo = Math.min.apply(null, keys), hi = Math.max.apply(null, keys), items = [];
+  if (hi - lo <= 60) { for (var k = lo; k <= hi; k++) items.push({ label: String(k), value: bins.get(k) || 0 }); }
+  else keys.sort(function (a, b) { return a - b; }).forEach(function (k) { items.push({ label: String(k), value: bins.get(k) }); });
+  var W = Math.max(280, box.clientWidth || 320), H = 200, L = 34, R = 6, T = 10, B = 26, iw = W - L - R, ih = H - T - B;
+  var maxV = Math.max.apply(null, items.map(function (i) { return i.value; }));
+  var step = Math.max(1, Math.ceil(maxV / 4)), top = Math.ceil(maxV / step) * step;
+  var svg = '<svg class="chart-svg" viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" role="img" aria-label="Girth distribution chart">';
+  for (var v = 0; v <= top; v += step) {
+    var y = T + ih - (v / top) * ih;
+    svg += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/><text x="' + (L - 6) + '" y="' + (y + 4) + '" text-anchor="end">' + v + '</text>';
+  }
+  var n = items.length, bw = iw / n, barW = Math.max(2, bw * 0.72), every = Math.ceil(n / Math.max(1, Math.floor(iw / 34)));
+  items.forEach(function (it, i) {
+    var h = (it.value / top) * ih, x = L + i * bw + (bw - barW) / 2, yy = T + ih - h;
+    if (it.value > 0) svg += '<rect class="bar" x="' + x.toFixed(1) + '" y="' + yy.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="2"><title>' + it.label + ' in: ' + it.value + (it.value === 1 ? ' log' : ' logs') + '</title></rect>';
+    if (i % every === 0) svg += '<text x="' + (x + barW / 2).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">' + it.label + '</text>';
+  });
+  box.innerHTML = svg + '</svg>';
+}
+function renderHistory() {
+  var h = getHistory(), list = $('histList');
+  if (!h.length) { list.innerHTML = '<p class="hint mb-0">No saved sessions yet.</p>'; return; }
+  list.innerHTML = h.map(function (raw) {
+    var s = sanitizeSession(raw), x = computeStats(s);
+    return '<div class="sess-item" data-sid="' + esc(s.id) + '"><div class="top"><strong>' + esc(s.supplier.name || 'Untitled load') + '</strong><span class="meta">' + esc(localDate(raw.savedAt || s.createdAt)) + '</span></div>' +
+      '<div class="meta">' + esc(s.supplier.vehicle || '--') + ' · ' + x.totalLines + (x.totalLines === 1 ? ' line' : ' lines') + ' · ' + x.count + ' logs · ' + esc(fmtVU(x.volume)) + (s.id === session.id ? ' · current' : '') + '</div>' +
+      '<div class="sess-actions"><button type="button" class="btn btn-brand btn-sm" data-sact="load">Open</button><button type="button" class="btn btn-danger-soft btn-sm" data-sact="delete" aria-label="Delete saved session">Delete</button></div></div>';
+  }).join('');
+}
+function renderInfo(S) {
+  var s = session.supplier;
+  var rows = [
+    ['Started', longDateTime(session.createdAt)], ['Supplier', s.name || '--'], ['Vehicle', s.vehicle || '--'], ['Driver', s.driver || '--'],
+    ['Log type', s.logType || '--'], ['Supplier saved', session.supplierSaved ? 'Yes' : 'No'], ['Lines', session.lines.length + ' (' + S.completedLines + ' completed)'],
+    ['Current line', lineLabel(curLine())], ['Logs', String(S.count)], ['Total volume', fmtVU(S.volume)]
+  ];
+  $('infoList').innerHTML = rows.map(function (r) { return '<div><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join('');
+}
+
+/* ============================================================
+   SUPPLIER
+   ============================================================ */
+var SUPPLIER_FIELDS = [
+  { id: 'supplierName', key: 'name', validate: function (v) { return v ? '' : 'Enter the supplier name.'; } },
+  { id: 'vehicleNumber', key: 'vehicle', validate: function (v) { return !v ? 'Enter the vehicle number.' : (/^[A-Za-z0-9][A-Za-z0-9 \-]{2,19}$/.test(v) ? '' : 'Use 3 to 20 letters or digits, e.g. JK01AB1234.'); } },
+  { id: 'driverName', key: 'driver', validate: function (v) { return v ? '' : 'Enter the driver name.'; } }
+];
+function fillSupplierInputs() {
+  $('supplierName').value = session.supplier.name; $('vehicleNumber').value = session.supplier.vehicle; $('driverName').value = session.supplier.driver;
+  var lt = $('logType'); lt.value = session.supplier.logType; if (lt.value !== session.supplier.logType) lt.value = '';
+  SUPPLIER_FIELDS.forEach(function (f) { $(f.id).classList.remove('is-invalid'); $(f.id + 'Err').textContent = ''; });
+}
+function saveSupplier() {
+  var vals = { name: $('supplierName').value.trim(), vehicle: $('vehicleNumber').value.trim().toUpperCase(), driver: $('driverName').value.trim(), logType: $('logType').value };
+  var firstBad = null;
+  SUPPLIER_FIELDS.forEach(function (f) {
+    var msg = f.validate(vals[f.key]);
+    $(f.id).classList.toggle('is-invalid', !!msg); $(f.id + 'Err').textContent = msg;
+    if (msg && !firstBad) firstBad = f.id;
+  });
+  if (firstBad) { $(firstBad).focus(); toast('Please fix the highlighted supplier fields', 'warn'); return; }
+  session.supplier = vals; session.supplierSaved = true; ui.supplierBackup = null;
+  fillSupplierInputs(); addActivity('Supplier saved: ' + vals.name); commit(); toast('Supplier saved');
+}
+function editSupplier() {
+  ui.supplierBackup = JSON.parse(JSON.stringify(session.supplier));
+  session.supplierSaved = false; fillSupplierInputs(); commit(); $('supplierName').focus();
+}
+function cancelSupplierEdit() {
+  if (!ui.supplierBackup) return;
+  session.supplier = ui.supplierBackup; ui.supplierBackup = null; session.supplierSaved = true;
+  fillSupplierInputs(); commit();
+}
+
+/* ============================================================
+   HEIGHT
+   ============================================================ */
+function populateHeightSelects() {
+  var f = $('heightFeet'), i = $('heightInches');
+  for (var n = 1; n <= 30; n++) f.insertAdjacentHTML('beforeend', '<option value="' + n + '">' + n + '</option>');
+  for (var m = 0; m < 12; m++) i.insertAdjacentHTML('beforeend', '<option value="' + m + '">' + m + '</option>');
+  i.value = '0';
+}
+function syncHeightSelects() {
+  var h = session.currentHeight;
+  $('heightFeet').value = h ? String(h.feet) : ''; $('heightInches').value = h ? String(h.inches) : '0';
+}
+function showHeightError(msg) { var e = $('heightErr'); e.textContent = msg; e.hidden = !msg; }
+function setHeight(feet, inches) {
+  showHeightError('');
+  if (!Number.isInteger(feet) || feet < 1 || feet > MAX_FEET) { showHeightError('Select the height in feet.'); $('heightFeet').focus(); return false; }
+  if (!Number.isInteger(inches) || inches < 0 || inches > 11) { showHeightError('Inches must be between 0 and 11.'); return false; }
+  var hadLogs = allEntries().length > 0;
+  session.currentHeight = { feet: feet, inches: inches }; ui.heightPending = false;
+  settings.recentHeights = [{ feet: feet, inches: inches }].concat(settings.recentHeights.filter(function (h) { return !(h.feet === feet && h.inches === inches); })).slice(0, 5);
+  saveSettings(); syncHeightSelects();
+  addActivity('Height applied: ' + formatHeight(feet, inches));
+  commit();
+  toast(hadLogs ? 'Height applied: ' + formatHeight(feet, inches) + '. New logs only; existing logs are unchanged.' : 'Height applied: ' + formatHeight(feet, inches), hadLogs ? 'info' : 'success', { duration: hadLogs ? 4200 : 2600 });
+  return true;
+}
+function applyHeight() {
+  var fRaw = $('heightFeet').value;
+  var inches = $('heightInches').value === '' ? 0 : parseInt($('heightInches').value, 10);
+  if (!fRaw) { showHeightError('Select the height in feet.'); $('heightFeet').focus(); return; }
+  if (setHeight(parseInt(fRaw, 10), inches) && !$('girthInput').disabled) $('girthInput').focus({ preventScroll: true });
+}
+function clearHeight() {
+  session.currentHeight = null; ui.heightPending = false; syncHeightSelects(); showHeightError('');
+  commit(); toast('Height cleared', 'info');
+}
+function onHeightSelectChange() {
+  showHeightError('');
+  var h = session.currentHeight; if (!h) return;
+  var same = parseInt($('heightFeet').value, 10) === h.feet && parseInt($('heightInches').value || '0', 10) === h.inches;
+  ui.heightPending = !same; renderEntry();
+}
+
+/* ============================================================
+   LOGS: add / edit / delete / pin / clear
+   ============================================================ */
+function showGirthError(msg) { $('girthInput').classList.toggle('is-invalid', !!msg); $('girthErr').textContent = msg || ''; }
+function gotoEntry() { showView('home'); setTimeout(function () { $('entryPanel').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 30); }
+
+function addLog() {
+  showGirthError('');
+  if (!session.currentHeight || ui.heightPending) {
+    showGirthError('Choose a height first.'); toast('Apply a height first', 'warn');
+    var hd = document.querySelector('.height-display'); hd.classList.remove('pulse'); void hd.offsetWidth; hd.classList.add('pulse');
+    if (ui.view !== 'home') gotoEntry(); else $('heightNote').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    feedbackTick('err'); return;
+  }
+  var raw = $('girthInput').value.trim(), g = Number(raw);
+  if (raw === '' || !isFinite(g) || g <= 0 || g > MAX_GIRTH) {
+    showGirthError('Enter a girth greater than 0 (up to ' + MAX_GIRTH + ' in).'); toast('Please enter a valid girth', 'warn'); feedbackTick('err'); return;
+  }
+  var h = session.currentHeight, cl = curLine();
+  var log = { id: uid(), pinned: false, feet: h.feet, inches: h.inches, girth: g, volume: calculateVolume(g, h.feet, h.inches), createdAt: nowISO() };
+  cl.logs.push(log); ui.flashId = log.id;
+  $('girthInput').value = '';
+  var n = cl.logs.length;
+  addActivity('Log #' + n + ' (' + lineLabel(cl) + ') · Girth ' + g + '" · ' + fmtVU(log.volume));
+  commit();
+  var btn = $('addLogBtn'); btn.classList.remove('done'); void btn.offsetWidth; btn.classList.add('done');
+  toast('Log #' + pad2(n) + ' added: ' + formatHeight(h.feet, h.inches) + ', ' + g + ' in, ' + fmtVU(log.volume), 'success', { key: 'added', duration: 1800 });
+  feedbackTick('ok');
+  if (settings.rapid || (settings.autoFocus && ui.typedGirth)) $('girthInput').focus({ preventScroll: true });
+}
+
+function openEdit(id) {
+  var r = findRef(id); if (!r) return;
+  editingId = id;
+  $('editNum').textContent = '#' + pad2(r.idx + 1);
+  $('editSub').textContent = lineLabel(r.line) + '. Changes apply to this log only.';
+  $('editFeet').value = r.log.feet; $('editInches').value = r.log.inches; $('editGirth').value = r.log.girth;
+  validateEdit(true); $('editDlg').showModal(); $('editGirth').focus(); $('editGirth').select();
+}
+function validateEdit(silent) {
+  var fRaw = $('editFeet').value.trim(), iRaw = $('editInches').value.trim(), gRaw = $('editGirth').value.trim();
+  var f = Number(fRaw), i = Number(iRaw), g = Number(gRaw), errs = {};
+  if (fRaw === '' || !Number.isInteger(f) || f < 1 || f > MAX_FEET) errs.editFeet = 'Whole feet, 1 to ' + MAX_FEET + '.';
+  if (iRaw === '' || !Number.isInteger(i) || i < 0 || i > 11) errs.editInches = 'Whole inches, 0 to 11.';
+  if (gRaw === '' || !isFinite(g) || g <= 0 || g > MAX_GIRTH) errs.editGirth = 'Greater than 0, up to ' + MAX_GIRTH + '.';
+  ['editFeet', 'editInches', 'editGirth'].forEach(function (id) {
+    var show = !silent && errs[id]; $(id).classList.toggle('is-invalid', !!show); $(id + 'Err').textContent = show ? errs[id] : '';
+  });
+  var valid = !Object.keys(errs).length;
+  $('editVolume').textContent = valid ? fmtV(calculateVolume(g, f, i)) : '--';
+  return valid ? { feet: f, inches: i, girth: g } : null;
+}
+function saveEdit(e) {
+  e.preventDefault();
+  var v = validateEdit(false);
+  if (!v) { toast('Fix the highlighted values', 'warn'); return; }
+  var r = findRef(editingId); if (!r) { $('editDlg').close(); return; }
+  r.log.feet = v.feet; r.log.inches = v.inches; r.log.girth = v.girth;      // only this log changes
+  r.log.volume = calculateVolume(v.girth, v.feet, v.inches);
+  ui.flashId = r.log.id;
+  addActivity('Log #' + (r.idx + 1) + ' (' + lineLabel(r.line) + ') updated: ' + v.girth + '" · ' + fmtVU(r.log.volume));
+  $('editDlg').close(); commit(); toast('Log updated');
+}
+
+async function deleteLog(id) {
+  var r = findRef(id); if (!r) return;
+  if (settings.confirmDelete) {
+    var ok = await confirmDialog({ title: 'Delete log #' + pad2(r.idx + 1) + '?', message: 'You can undo right after.', confirmText: 'Delete', danger: true });
+    if (!ok) return;
+    r = findRef(id); if (!r) return;
+  }
+  r.line.logs.splice(r.idx, 1);
+  deletedStack.push({ log: r.log, lineId: r.line.id, index: r.idx, sessionId: session.id });
+  if (deletedStack.length > 30) deletedStack.shift();
+  addActivity('Log deleted (' + lineLabel(r.line) + ', girth ' + r.log.girth + '")');
+  commit();
+  toast('Log deleted', 'info', { duration: 6000, key: 'deleted', action: { label: 'Undo', onClick: undoDelete } });
+}
+function undoDelete() {
+  var item = deletedStack.pop();
+  var line = item && item.sessionId === session.id ? lineById(item.lineId) : null;
+  if (!line) { toast('Nothing to undo', 'warn'); return; }
+  line.logs.splice(Math.min(item.index, line.logs.length), 0, item.log);
+  ui.flashId = item.log.id; addActivity('Log restored (' + lineLabel(line) + ')'); commit();
+  var more = deletedStack.filter(function (d) { return d.sessionId === session.id; }).length;
+  if (more) toast('Log restored. ' + more + ' more deleted.', 'success', { duration: 6000, key: 'deleted', action: { label: 'Undo', onClick: undoDelete } });
+  else toast('Log restored');
+}
+function togglePin(id) {
+  var r = findRef(id); if (!r) return;
+  r.log.pinned = !r.log.pinned; commit();
+  toast(r.log.pinned ? 'Log pinned' : 'Log unpinned', 'info', { key: 'pin', duration: 1500 });
+}
+async function clearCurrentLogs() {
+  var cl = curLine();
+  if (!cl.logs.length) { toast('There are no logs in this line', 'info'); return; }
+  var ok = await confirmDialog({
+    title: 'Clear all logs?',
+    message: 'Are you sure you want to clear all ' + cl.logs.length + ' logs from ' + lineLabel(cl) + '? This action cannot be undone. Completed lines, supplier details and height are kept.',
+    confirmText: 'Clear all', danger: true
+  });
+  if (!ok) return;
+  cl.logs = []; deletedStack = []; addActivity('All logs cleared from ' + lineLabel(cl)); commit(); toast('All logs cleared', 'info');
+}
+
+/* ============================================================
+   LINES (batches). The user chooses the line number.
+   ============================================================ */
+function suggestNextLineNumber() {
+  var nums = session.lines.map(function (l) { return parseInt(l.number, 10); }).filter(function (n) { return isFinite(n); });
+  return String((nums.length ? Math.max.apply(null, nums) : 0) + 1);
+}
+function validateLineNumber(v, ignoreId) {
+  v = v.trim();
+  if (!v) return 'Enter a line number.';
+  if (!/^[A-Za-z0-9][A-Za-z0-9 _\-./]{0,11}$/.test(v)) return 'Use up to 12 letters, digits or - _ . /';
+  var clash = session.lines.some(function (l) { return l.id !== ignoreId && l.number.toLowerCase() === v.toLowerCase(); });
+  return clash ? 'Line ' + v + ' already exists. Choose a different number.' : '';
+}
+function openLineDialog(cfg) {
+  lineCfg = cfg;
+  $('lineTitle').textContent = cfg.title; $('lineSub').textContent = cfg.sub; $('lineLabel').textContent = cfg.label;
+  $('lineInput').value = cfg.value; $('lineInput').classList.remove('is-invalid'); $('lineErr').textContent = '';
+  $('lineOk').textContent = cfg.confirmText;
+  $('lineDlg').showModal(); $('lineInput').focus(); $('lineInput').select();
+}
+function submitLineDialog(e) {
+  e.preventDefault();
+  var v = $('lineInput').value.trim(), err = validateLineNumber(v, lineCfg.ignoreId);
+  $('lineInput').classList.toggle('is-invalid', !!err); $('lineErr').textContent = err;
+  if (err) { $('lineInput').focus(); return; }
+  $('lineDlg').close(); lineCfg.onSubmit(v);
+}
+function finishLine() {
+  var line = curLine();
+  if (!line.logs.length) { toast('Add at least one log before finishing the line', 'warn'); return; }
+  var st = lineStats(line);
+  openLineDialog({
+    title: 'Finish ' + lineLabel(line) + '?',
+    sub: st.count + (st.count === 1 ? ' log' : ' logs') + ' · ' + fmtVU(st.volume) + '. Enter the number for the next line.',
+    label: 'Next line number', value: suggestNextLineNumber(), confirmText: 'Finish line', ignoreId: null,
+    onSubmit: function (next) {
+      line.completedAt = nowISO();
+      session.lines.push(newLine(next));
+      addActivity(lineLabel(line) + ' completed (' + st.count + ' logs, ' + fmtVU(st.volume) + '). Now on Line ' + next);
+      commit(); toast(lineLabel(line) + ' completed. Now on Line ' + next);
+      feedbackTick('ok');
+    }
+  });
+}
+function renameLine(line) {
+  openLineDialog({
+    title: 'Change line number', sub: 'Currently ' + lineLabel(line) + '.', label: 'Line number', value: line.number, confirmText: 'Save', ignoreId: line.id,
+    onSubmit: function (v) {
+      var old = line.number; if (v === old) return;
+      line.number = v; addActivity('Line ' + old + ' renamed to Line ' + v); commit(); toast('Line number changed to ' + v);
+    }
+  });
+}
+function openLineDetail(id) { ui.detailLineId = id; renderLineDetail(); $('lineDetailDlg').showModal(); }
+function reopenLine(id) {
+  var line = lineById(id), cur = curLine();
+  if (!line || line === cur || !line.completedAt) return;
+  if (cur.logs.length) { toast('Finish the current line (or clear it) before reopening another line', 'warn', { duration: 5000 }); return; }
+  session.lines.splice(session.lines.length - 1, 1);              // drop the empty current line
+  session.lines.splice(session.lines.indexOf(line), 1);
+  line.completedAt = null; session.lines.push(line);
+  addActivity(lineLabel(line) + ' reopened'); $('lineDetailDlg').close(); commit(); toast(lineLabel(line) + ' reopened');
+}
+
+/* ============================================================
+   SESSIONS, BACKUP AND RESTORE
+   ============================================================ */
+function adoptSession(s) {
+  session = s; deletedStack = []; ui.heightPending = false; ui.flashId = null; ui.supplierBackup = null;
+  fillSupplierInputs(); syncHeightSelects(); showHeightError(''); showGirthError(''); $('girthInput').value = '';
+  commit();
+}
+async function startNewSession() {
+  if (sessionHasContent(session)) {
+    var ok = await confirmDialog({ title: 'Start a new session?', message: 'The current load is saved under Reports → Saved sessions first, then you start with blank supplier, height and lines.', confirmText: 'Start new session' });
+    if (!ok) return;
+    archiveSession(session);
+  } else if (session.supplierSaved || session.supplier.name) {
+    var ok2 = await confirmDialog({ title: 'Start a new session?', message: 'The supplier details of this session will be cleared. There are no logs yet.', confirmText: 'Start new session' });
+    if (!ok2) return;
+  }
+  adoptSession(newSession()); toast('New session started', 'info'); showView('home');
+}
+async function resetSession() {
+  if (!sessionHasContent(session)) { toast('There are no logs to reset yet', 'info'); return; }
+  var ok = await confirmDialog({
+    title: 'Reset session?',
+    message: 'Are you sure? All lines and logs go back to a fresh Line 1. Supplier details and height are kept. A copy of the current session is saved under Reports → Saved sessions.',
+    confirmText: 'Reset session', danger: true
+  });
+  if (!ok) return;
+  archiveSession(session);
+  session.id = uid(); session.createdAt = nowISO(); session.lines = [newLine('1')]; session.activity = [{ t: session.createdAt, text: 'Session reset' }];
+  deletedStack = []; commit(); toast('Session reset', 'info');
+}
+function saveCurrentSession() {
+  if (!sessionHasContent(session) && !session.supplier.name) { toast('Nothing to save yet', 'warn'); return; }
+  var ok = archiveSession(session); saveState(); renderHistory();
+  toast(ok ? 'Session saved' : 'Could not save the session on this device', ok ? 'success' : 'error');
+}
+async function loadFromHistory(id) {
+  var raw = getHistory().find(function (x) { return x.id === id; }); if (!raw) return;
+  if (raw.id === session.id) { toast('That session is already open', 'info'); return; }
+  if (sessionHasContent(session)) {
+    var ok = await confirmDialog({ title: 'Open this saved session?', message: 'Your current load is saved first, so nothing is lost.', confirmText: 'Open session' });
+    if (!ok) return;
+    archiveSession(session);
+  }
+  adoptSession(sanitizeSession(raw)); toast('Session restored', 'info'); showView('home');
+}
+async function deleteFromHistory(id) {
+  var ok = await confirmDialog({ title: 'Delete saved session?', message: 'This removes it from Saved sessions permanently.', confirmText: 'Delete', danger: true });
+  if (!ok) return;
+  setHistory(getHistory().filter(function (x) { return x.id !== id; })); renderHistory(); toast('Saved session deleted', 'info');
+}
+
+function downloadBlob(blob, name) {
+  var url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+function exportJSON(full) {
+  var data = { app: 'timber-logs-manager', version: 2, type: full ? 'backup' : 'session', exportedAt: nowISO(), session: session };
+  if (full) { data.history = getHistory(); data.settings = settings; data.theme = themePref(); }
+  downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), (full ? 'timber_backup_' : 'timber_session_') + localDate() + '.json');
+  toast(full ? 'Backup downloaded' : 'Session exported');
+}
+function handleImport(file) {
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { toast('That file is too large', 'error'); return; }
+  var fr = new FileReader();
+  fr.onerror = function () { toast('Could not read that file', 'error'); };
+  fr.onload = async function () {
+    var data;
+    try { data = JSON.parse(fr.result); } catch (e) { toast('That file is not a valid backup', 'error'); return; }
+    if (!data || data.app !== 'timber-logs-manager' || !data.session) { toast('That file is not a Timber Logs Manager backup', 'error'); return; }
+    var imported = sanitizeSession(data.session), x = computeStats(imported);
+    var ok = await confirmDialog({
+      title: 'Restore this data?',
+      message: 'File contains ' + x.count + ' logs in ' + x.totalLines + ' line(s)' + (imported.supplier.name ? ' for ' + imported.supplier.name : '') + '. Your current session is saved under Saved sessions first.',
+      confirmText: 'Restore'
+    });
+    if (!ok) return;
+    if (sessionHasContent(session)) archiveSession(session);
+    if (data.type === 'backup') {
+      if (Array.isArray(data.history)) {
+        var cur = getHistory(), ids = {}; cur.forEach(function (h) { ids[h.id] = true; });
+        var add = data.history.map(function (h) { var s = sanitizeSession(h); s.savedAt = str(h && h.savedAt) || nowISO(); return s; }).filter(function (h) { return !ids[h.id]; });
+        setHistory(cur.concat(add));
+      }
+      if (data.settings) { settings = sanitizeSettings(data.settings); saveSettings(); buildQuickGirths(); syncSettingsUI(); }
+      if (data.theme === 'light' || data.theme === 'dark' || data.theme === 'system') applyTheme(data.theme, true);
+    }
+    adoptSession(imported); toast('Data restored'); showView('home');
+  };
+  fr.readAsText(file);
+}
+async function clearAllData() {
+  var ok = await confirmDialog({
+    title: 'Clear all data?',
+    message: 'This permanently deletes the current session, all saved sessions and your settings from this device. Download a backup first if you may need them.',
+    confirmText: 'Delete everything', danger: true, requireText: 'RESET'
+  });
+  if (!ok) return;
+  [KEYS.state, KEYS.settings, KEYS.sessions, KEYS.theme, KEYS.state + '.corrupt'].forEach(Store.remove);
+  settings = sanitizeSettings({}); applyTheme('system', false); buildQuickGirths(); syncSettingsUI();
+  adoptSession(newSession()); toast('All data cleared', 'info'); showView('home');
+}
+
+/* ============================================================
+   EXPORT: PDF, share, CSV, print
+   ============================================================ */
+function exportPrechecks() {
+  if (!session.supplierSaved) {
+    toast('Save supplier details first', 'warn'); showView('home');
+    setTimeout(function () { $('supplierPanel').scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 30); return false;
+  }
+  if (!allEntries().length) { toast('Add at least one log before exporting', 'warn'); return false; }
+  if (!window.jspdf || !window.jspdf.jsPDF) { toast('PDF library did not load. Check your internet connection and reload.', 'error'); return false; }
+  return true;
+}
+
+/* Builds the report. Each line is its own section headed by the line number the user chose. */
+function buildPDF() {
+  var jsPDF = window.jspdf.jsPDF, doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  var pageW = doc.internal.pageSize.getWidth(), pageH = doc.internal.pageSize.getHeight();
+  var M = 14, y = 17, S = computeStats(), s = session.supplier, GREEN = [29, 90, 67], U = unitLabel();
+  function ensure(h) { if (y + h > pageH - 18) { doc.addPage(); y = 18; } }
+
+  // Header
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(20, 30, 25);
+  doc.text(COMPANY.name, pageW / 2, y, { align: 'center' }); y += 6.5;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.setTextColor(60, 70, 65);
+  [COMPANY.proprietor, COMPANY.contact, COMPANY.address].forEach(function (t) { doc.text(t, pageW / 2, y, { align: 'center' }); y += 5; });
+  y += 1; doc.setDrawColor(GREEN[0], GREEN[1], GREEN[2]); doc.setLineWidth(0.7); doc.line(M, y, pageW - M, y); y += 8;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]);
+  doc.text('Timber Logs Report', pageW / 2, y, { align: 'center' }); y += 9;
+
+  // Supplier information
+  doc.setTextColor(20, 30, 25); doc.setFontSize(12); doc.text('Supplier information', M, y); y += 6; doc.setFontSize(10.5);
+  function fit(text, maxW) { text = String(text || '-'); if (doc.getTextWidth(text) <= maxW) return text; while (text.length > 1 && doc.getTextWidth(text + '...') > maxW) text = text.slice(0, -1); return text + '...'; }
+  function kv(label, value, x, yy) { doc.setFont('helvetica', 'bold'); doc.text(label, x, yy); doc.setFont('helvetica', 'normal'); doc.text(fit(value, 62), x + 24, yy); }
+  kv('Supplier:', s.name, M, y); kv('Vehicle:', s.vehicle, 110, y); y += 6;
+  kv('Driver:', s.driver, M, y); kv('Log type:', s.logType || 'N/A', 110, y); y += 6;
+  kv('Date:', new Date().toLocaleDateString(), M, y); y += 10;
+
+  // Summary
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('Summary', M, y); y += 2;
+  var sumTop = y;
+  doc.autoTable({
+    startY: y, theme: 'plain', tableWidth: 92,
+    body: [['Total lines', String(S.totalLines)], ['Total logs', String(S.count)], ['Total volume', fmtVU(S.volume)],
+           ['Average girth', fmtG(S.avgGirth) + ' in'], ['Maximum girth', S.maxGirth + ' in'], ['Minimum girth', S.minGirth + ' in']],
+    styles: { fontSize: 10, cellPadding: 1.8 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 38 }, 1: { halign: 'right' } },
+    margin: { left: M, right: M }
+  });
+  var sumEnd = doc.lastAutoTable.finalY, bx = 112, bw = pageW - M - bx, cx = bx + bw / 2;
+  doc.setFillColor(224, 239, 231); doc.setDrawColor(GREEN[0], GREEN[1], GREEN[2]); doc.setLineWidth(0.6);
+  doc.roundedRect(bx, sumTop + 2, bw, 30, 3, 3, 'FD');
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(60, 70, 65); doc.text('Total volume', cx, sumTop + 10, { align: 'center' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.text(fmtV(S.volume), cx, sumTop + 22, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(U, cx, sumTop + 28, { align: 'center' });
+  y = Math.max(sumEnd, sumTop + 34) + 8;
+
+  // Line summary
+  ensure(30);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(20, 30, 25); doc.text('Line summary', M, y); y += 2;
+  doc.autoTable({
+    startY: y, theme: 'grid',
+    head: [['Line', 'Logs', 'Volume (' + U + ')', 'Status']],
+    body: S.linesWithLogs.map(function (l) { var st = lineStats(l); return ['Line ' + l.number, st.count, fmtV(st.volume), l.completedAt ? 'Completed' : 'In progress']; }),
+    foot: [['Total', String(S.count), fmtV(S.volume), '']], showFoot: 'lastPage',
+    styles: { fontSize: 10, cellPadding: 2, lineColor: [200, 208, 202] },
+    headStyles: { fillColor: GREEN, textColor: 255 }, footStyles: { fillColor: [224, 239, 231], textColor: [20, 30, 25], fontStyle: 'bold' },
+    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } }, margin: { left: M, right: M, bottom: 20 }
+  });
+  y = doc.lastAutoTable.finalY + 10;
+
+  // Detailed logs, one section per line (each headed with its line number)
+  ensure(30);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(20, 30, 25); doc.text('Detailed logs', M, y); y += 3;
+  var serial = 0;
+  S.linesWithLogs.forEach(function (line) {
+    var st = lineStats(line), body = line.logs.map(function (l) { serial++; return [serial, line.number, formatHeight(l.feet, l.inches), l.girth, fmtV(l.volume)]; });
+    doc.autoTable({
+      startY: y + 2, theme: 'grid',
+      head: [[{ content: 'Line ' + line.number + '  -  ' + st.count + (st.count === 1 ? ' log' : ' logs') + '  -  ' + fmtV(st.volume) + ' ' + U + (line.completedAt ? '' : '  (in progress)'), colSpan: 5, styles: { halign: 'left' } }],
+             ['S.No', 'Line', 'Height', 'Girth (in)', 'Volume (' + U + ')']],
+      body: body,
+      foot: [[{ content: 'Line ' + line.number + ' total', colSpan: 4, styles: { halign: 'right' } }, fmtV(st.volume)]], showFoot: 'lastPage',
+      styles: { fontSize: 9.5, cellPadding: 1.9, lineColor: [200, 208, 202] },
+      headStyles: { fillColor: [224, 239, 231], textColor: [20, 30, 25], fontStyle: 'bold' },
+      footStyles: { fillColor: [240, 246, 242], textColor: [20, 30, 25], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [247, 250, 248] },
+      columnStyles: { 0: { halign: 'center', cellWidth: 20 }, 1: { halign: 'center', cellWidth: 24 }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+      didParseCell: function (d) { if (d.section === 'head' && d.row.index === 0) { d.cell.styles.fillColor = GREEN; d.cell.styles.textColor = 255; d.cell.styles.fontSize = 10.5; } },
+      margin: { left: M, right: M, bottom: 20 }
+    });
+    y = doc.lastAutoTable.finalY + 6;
+  });
+
+  // Final total
+  ensure(46);
+  y += 2;
+  doc.setFillColor(GREEN[0], GREEN[1], GREEN[2]); doc.roundedRect(M, y, pageW - 2 * M, 14, 2.5, 2.5, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(255, 255, 255);
+  doc.text('TOTAL VOLUME: ' + fmtV(S.volume) + ' ' + U, pageW / 2, y + 9.2, { align: 'center' });
+  y += 34;
+
+  // Signatures
+  ensure(14);
+  doc.setDrawColor(40, 50, 45); doc.setLineWidth(0.3);
+  doc.line(M, y, M + 70, y); doc.line(pageW - M - 80, y, pageW - M, y);
+  doc.setTextColor(60, 70, 65); doc.setFontSize(9.5); doc.setFont('helvetica', 'normal');
+  doc.text('Supplier / driver signature', M, y + 5); doc.text('Authorised signature: ' + COMPANY.signatory, pageW - M - 80, y + 5);
+
+  // Page numbers
+  var pages = doc.internal.getNumberOfPages();
+  for (var p = 1; p <= pages; p++) {
+    doc.setPage(p); doc.setFontSize(9); doc.setTextColor(120, 130, 125);
+    doc.text(COMPANY.name, M, pageH - 8); doc.text('Page ' + p + ' of ' + pages, pageW - M, pageH - 8, { align: 'right' });
+  }
+  return doc;
+}
+function withBusy(btn, fn) {
+  btn.classList.add('busy'); var old = btn.innerHTML; btn.innerHTML = '<span class="spinner" aria-hidden="true"></span> Working…';
+  setTimeout(function () { try { fn(); } finally { btn.classList.remove('busy'); btn.innerHTML = old; } }, 40);
+}
+function exportPDF() {
+  if (!exportPrechecks()) return;
+  withBusy($('exportPdfBtn'), function () {
+    try { buildPDF().save('timber_logs.pdf'); toast('PDF generated'); }
+    catch (err) { console.error(err); toast('Could not create the PDF', 'error'); }
+  });
+}
+async function shareReport() {
+  if (!exportPrechecks()) return;
+  var doc;
+  try { doc = buildPDF(); } catch (err) { console.error(err); toast('Could not create the PDF', 'error'); return; }
+  try {
+    var file = new File([doc.output('blob')], 'timber_logs.pdf', { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'Timber Logs Report', text: 'Timber Logs Report: ' + session.supplier.name + ', ' + fmtVU(computeStats().volume) });
+      toast('Report shared'); return;
+    }
+  } catch (err) { if (err && err.name === 'AbortError') return; }
+  doc.save('timber_logs.pdf'); toast('Sharing is not available on this device. The PDF was downloaded instead.', 'info', { duration: 5000 });
+}
+function csvCell(v) {
+  var s = String(v == null ? '' : v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;           // block spreadsheet formula injection
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function exportCSV() {
+  var entries = allEntries();
+  if (!entries.length) { toast('Add at least one log before exporting', 'warn'); return; }
+  var s = session.supplier;
+  var rows = [['S.No', 'Line', 'Supplier', 'Vehicle', 'Driver', 'Log Type', 'Height Feet', 'Height Inches', 'Girth', 'Volume (cu.ft)', 'Pinned', 'Date']];
+  entries.forEach(function (e) {
+    rows.push([e.serial, e.line.number, s.name, s.vehicle, s.driver, s.logType, e.log.feet, e.log.inches, e.log.girth, e.log.volume.toFixed(2), e.log.pinned ? 'Yes' : 'No', localDate(e.log.createdAt)]);
+  });
+  downloadBlob(new Blob(['\uFEFF' + rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' }), 'timber_logs.csv');
+  toast('CSV exported');
+}
+function renderPrint() {
+  var S = computeStats(), s = session.supplier, U = unitLabel(), serial = 0;
+  var sections = S.linesWithLogs.map(function (line) {
+    var st = lineStats(line);
+    var rows = line.logs.map(function (l) { serial++; return '<tr><td>' + serial + '</td><td>' + esc(line.number) + '</td><td>' + formatHeight(l.feet, l.inches) + '</td><td class="r">' + l.girth + '</td><td class="r">' + fmtV(l.volume) + '</td></tr>'; }).join('');
+    return '<table><thead><tr class="linehead"><th colspan="5">Line ' + esc(line.number) + ' - ' + st.count + ' logs - ' + fmtV(st.volume) + ' ' + U + (line.completedAt ? '' : ' (in progress)') + '</th></tr>' +
+      '<tr><th>S.No</th><th>Line</th><th>Height</th><th class="r">Girth (in)</th><th class="r">Volume (' + U + ')</th></tr></thead><tbody>' + rows +
+      '<tr><th colspan="4" class="r">Line ' + esc(line.number) + ' total</th><th class="r">' + fmtV(st.volume) + '</th></tr></tbody></table>';
+  }).join('') || '<p>No logs recorded.</p>';
+  var lineRows = S.linesWithLogs.map(function (l) { var st = lineStats(l); return '<tr><td>Line ' + esc(l.number) + '</td><td class="r">' + st.count + '</td><td class="r">' + fmtV(st.volume) + '</td></tr>'; }).join('');
+  $('printSheet').innerHTML =
+    '<h1>' + esc(COMPANY.name) + '</h1><p class="co">' + esc(COMPANY.proprietor) + '<br>' + esc(COMPANY.contact) + '<br>' + esc(COMPANY.address) + '</p><div class="rule"></div>' +
+    '<h1 style="font-size:14pt;color:#1d5a43">Timber Logs Report</h1>' +
+    '<table class="load"><tr><td><b>Supplier:</b> ' + esc(s.name || '-') + '</td><td><b>Vehicle:</b> ' + esc(s.vehicle || '-') + '</td></tr>' +
+    '<tr><td><b>Driver:</b> ' + esc(s.driver || '-') + '</td><td><b>Log type:</b> ' + esc(s.logType || 'N/A') + '</td></tr><tr><td colspan="2"><b>Date:</b> ' + esc(new Date().toLocaleDateString()) + '</td></tr></table>' +
+    '<h2>Summary</h2><table><tr><th>Total lines</th><td>' + S.totalLines + '</td><th>Total logs</th><td>' + S.count + '</td></tr>' +
+    '<tr><th>Average girth</th><td>' + fmtG(S.avgGirth) + ' in</td><th>Max / min girth</th><td>' + S.maxGirth + ' / ' + S.minGirth + ' in</td></tr></table>' +
+    '<h2>Line summary</h2><table><thead><tr><th>Line</th><th class="r">Logs</th><th class="r">Volume (' + U + ')</th></tr></thead><tbody>' + lineRows + '</tbody></table>' +
+    '<h2>Detailed logs</h2>' + sections +
+    '<p class="big">TOTAL VOLUME: ' + fmtV(S.volume) + ' ' + U + '</p>' +
+    '<div class="sign"><div>Supplier / driver signature</div><div>Authorised signature: ' + esc(COMPANY.signatory) + '</div></div>';
+}
+function printReport() {
+  if (!allEntries().length) toast('There are no logs to print yet', 'warn');
+  renderPrint(); window.print();
+}
+
+/* ============================================================
+   NAVIGATION (no page reloads)
+   ============================================================ */
+var VIEWS = ['home', 'logs', 'lines', 'reports', 'settings'];
+function showView(name, fromHash) {
+  if (VIEWS.indexOf(name) < 0) name = 'home';
+  ui.view = name;
+  VIEWS.forEach(function (v) { $('view-' + v).hidden = v !== name; });
+  document.querySelectorAll('.app-nav button').forEach(function (b) {
+    if (b.dataset.view === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  if (!fromHash && location.hash !== '#' + name) { try { location.hash = name; } catch (e) {} }
+  if (name === 'reports') renderReports(computeStats());
+  if (name === 'settings') syncSettingsUI();
+  window.scrollTo(0, 0);
+}
+function measureHeader() { document.documentElement.style.setProperty('--hdr-h', $('appHeader').offsetHeight + 'px'); }
+
+/* ============================================================
+   SETTINGS + THEME
+   ============================================================ */
+function themePref() { try { var p = localStorage.getItem(KEYS.theme); return (p === 'light' || p === 'dark') ? p : 'system'; } catch (e) { return 'system'; } }
+function resolvedTheme(pref) { return pref === 'system' ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : pref; }
+function applyTheme(pref, persist) {
+  var t = resolvedTheme(pref);
+  document.documentElement.setAttribute('data-bs-theme', t);
+  $('themeBtn').innerHTML = '<i class="bi bi-' + (t === 'dark' ? 'sun' : 'moon-stars') + '" aria-hidden="true"></i>';
+  $('themeBtn').setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+  $('setTheme').value = pref;
+  var meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', t === 'dark' ? '#16251e' : '#1d5a43');
+  if (persist) { try { if (pref === 'system') localStorage.removeItem(KEYS.theme); else localStorage.setItem(KEYS.theme, pref); } catch (e) {} }
+  if (session && ui.view === 'reports') renderGirthChart();
+}
+function syncSettingsUI() {
+  $('setTheme').value = themePref(); $('setUnit').value = settings.unit; $('setDecimals').value = String(settings.decimals);
+  $('setQuick').value = settings.quickGirths; $('setAutoFocus').checked = settings.autoFocus; $('setConfirmDelete').checked = settings.confirmDelete;
+  $('setFeedback').checked = settings.feedback; $('setSaveStatus').checked = settings.showSaveStatus; $('setQuickErr').hidden = true;
+}
+function applyQuickSetting() {
+  var txt = $('setQuick').value.trim(), err = $('setQuickErr');
+  if (!parseGirthList(txt).length) { err.hidden = false; err.textContent = 'Enter at least one valid girth, e.g. 16-45.'; return; }
+  err.hidden = true; settings.quickGirths = txt; saveSettings(); buildQuickGirths();
+  toast('Quick girth values updated', 'success', { key: 'settings', duration: 1600 });
+}
+
+/* ============================================================
+   EVENT WIRING
+   ============================================================ */
+function wireEvents() {
+  // Navigation
+  document.querySelectorAll('.app-nav button').forEach(function (b) { b.addEventListener('click', function () { showView(b.dataset.view); }); });
+  document.querySelectorAll('[data-goto]').forEach(function (b) { b.addEventListener('click', function () { showView(b.dataset.goto); }); });
+  window.addEventListener('hashchange', function () { showView(location.hash.replace('#', ''), true); });
+  window.addEventListener('resize', function () { measureHeader(); });
+
+  // Session bar
+  $('sessNewBtn').addEventListener('click', startNewSession);
+  $('sessResetBtn').addEventListener('click', resetSession);
+  $('sessInfoBtn').addEventListener('click', function () { renderInfo(computeStats()); $('infoDlg').showModal(); });
+
+  // Supplier
+  $('saveSupplierBtn').addEventListener('click', saveSupplier);
+  $('editSupplierBtn').addEventListener('click', editSupplier);
+  $('cancelSupplierBtn').addEventListener('click', cancelSupplierEdit);
+  $('supplierForm').addEventListener('submit', function (e) { e.preventDefault(); saveSupplier(); });
+  SUPPLIER_FIELDS.forEach(function (f) {
+    $(f.id).addEventListener('input', function () {
+      $(f.id).classList.remove('is-invalid'); $(f.id + 'Err').textContent = '';
+      session.supplier[f.key] = $(f.id).value; renderHeader(computeStats()); saveDraftSoon();
+    });
+  });
+  $('logType').addEventListener('change', function () { session.supplier.logType = $('logType').value; saveDraftSoon(); });
+
+  // Height
+  $('applyHeightBtn').addEventListener('click', applyHeight);
+  $('clearHeightBtn').addEventListener('click', clearHeight);
+  $('heightFeet').addEventListener('change', onHeightSelectChange);
+  $('heightInches').addEventListener('change', onHeightSelectChange);
+  function chipClick(e) { var b = e.target.closest('.hchip'); if (b) setHeight(parseInt(b.dataset.hf, 10), parseInt(b.dataset.hi, 10)); }
+  $('presetRow').addEventListener('click', chipClick); $('recentRow').addEventListener('click', chipClick);
+
+  // Entry
+  $('rapidToggle').addEventListener('change', function () {
+    settings.rapid = $('rapidToggle').checked; saveSettings(); renderEntry();
+    toast(settings.rapid ? 'Rapid entry on: a girth tap adds the log' : 'Rapid entry off', 'info', { key: 'rapid', duration: 1800 });
+  });
+  $('quickWrap').addEventListener('click', function (e) {
+    var b = e.target.closest('.quick-girth-btn'); if (!b || b.disabled) return;
+    $('girthInput').value = b.dataset.g; ui.typedGirth = false; showGirthError(''); markQuickActive();
+    if (settings.rapid) addLog();
+  });
+  $('girthInput').addEventListener('input', function () { ui.typedGirth = true; showGirthError(''); markQuickActive(); });
+  $('girthInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addLog(); } });
+  $('clearGirthBtn').addEventListener('click', function () { $('girthInput').value = ''; showGirthError(''); markQuickActive(); $('girthInput').focus(); });
+  $('addLogBtn').addEventListener('click', addLog);
+  $('finishLineBtn').addEventListener('click', finishLine);
+  $('lineChipBtn').addEventListener('click', function () { renameLine(curLine()); });
+  $('addFirstBtn').addEventListener('click', gotoEntry);
+  $('emptyAddBtn').addEventListener('click', gotoEntry);
+
+  // Log actions (works in every list: Home, Logs, line details)
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.log-item [data-act]'); if (!btn) return;
+    var id = btn.closest('.log-item').dataset.id, a = btn.dataset.act;
+    if (a === 'edit') openEdit(id); else if (a === 'delete') deleteLog(id); else if (a === 'pin') togglePin(id);
+  });
+  $('clearLogsBtn').addEventListener('click', clearCurrentLogs);
+  $('logsFinishBtn').addEventListener('click', finishLine);
+
+  // Filter / sort / search
+  $('filterToggle').addEventListener('click', function () {
+    var p = $('filterPanel'), open = p.hidden; p.hidden = !open; $('filterToggle').setAttribute('aria-expanded', open);
+  });
+  function refreshList() { ui.logLimit = PAGE_SIZE; renderLogsView(); }
+  $('searchInput').addEventListener('input', function () { ui.filter.q = $('searchInput').value; refreshList(); });
+  $('fField').addEventListener('change', function () { ui.filter.field = $('fField').value; refreshList(); });
+  $('fScope').addEventListener('change', function () { ui.scope = $('fScope').value; refreshList(); });
+  $('sortSelect').addEventListener('change', function () { ui.sort = $('sortSelect').value; refreshList(); });
+  $('fPinned').addEventListener('change', function () { ui.filter.pinned = $('fPinned').checked; refreshList(); });
+  function clearFilters() {
+    ui.filter = { field: 'any', q: '', pinned: false }; ui.scope = 'current';
+    $('fField').value = 'any'; $('searchInput').value = ''; $('fPinned').checked = false; $('fScope').value = 'current'; refreshList();
+  }
+  $('filterClear').addEventListener('click', clearFilters); $('noMatchClear').addEventListener('click', clearFilters);
+  $('showMoreBtn').addEventListener('click', function () { ui.logLimit += PAGE_SIZE; renderLogsView(); });
+
+  // Lines
+  $('linesFinishBtn').addEventListener('click', finishLine);
+  $('linesRenameBtn').addEventListener('click', function () { renameLine(curLine()); });
+  $('linesOpenCur').addEventListener('click', function () { openLineDetail(curLine().id); });
+  $('linesList').addEventListener('click', function (e) { var b = e.target.closest('[data-openline]'); if (b) openLineDetail(b.dataset.openline); });
+  $('ldRename').addEventListener('click', function () { var l = lineById(ui.detailLineId); if (l) renameLine(l); });
+  $('ldReopen').addEventListener('click', function () { reopenLine(ui.detailLineId); });
+  $('lineForm').addEventListener('submit', submitLineDialog);
+  $('lineCancel').addEventListener('click', function () { $('lineDlg').close(); });
+  $('lineInput').addEventListener('input', function () { $('lineInput').classList.remove('is-invalid'); $('lineErr').textContent = ''; });
+
+  // Edit dialog
+  $('editForm').addEventListener('submit', saveEdit);
+  ['editFeet', 'editInches', 'editGirth'].forEach(function (id) { $(id).addEventListener('input', function () { validateEdit(false); }); });
+  $('editCancel').addEventListener('click', function () { $('editDlg').close(); });
+
+  // Dialog helpers: close buttons, backdrop click
+  document.querySelectorAll('dialog').forEach(function (d) {
+    d.addEventListener('click', function (e) { if (e.target === d && d.id !== 'contDlg') d.close(); });
+    d.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', function () { d.close(); }); });
+  });
+
+  // Reports
+  $('exportPdfBtn').addEventListener('click', exportPDF);
+  $('sharePdfBtn').addEventListener('click', shareReport);
+  $('exportCsvBtn').addEventListener('click', exportCSV);
+  $('printBtn').addEventListener('click', printReport);
+  $('saveSessionBtn').addEventListener('click', saveCurrentSession);
+  $('histList').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-sact]'); if (!b) return;
+    var id = b.closest('.sess-item').dataset.sid;
+    if (b.dataset.sact === 'load') loadFromHistory(id); else deleteFromHistory(id);
+  });
+  var rz; window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(function () { if (ui.view === 'reports') renderGirthChart(); }, 150); });
+
+  // Settings
+  $('themeBtn').addEventListener('click', function () { applyTheme(resolvedTheme(themePref()) === 'dark' ? 'light' : 'dark', true); });
+  $('setTheme').addEventListener('change', function () { applyTheme($('setTheme').value, true); });
+  $('setUnit').addEventListener('change', function () { settings.unit = $('setUnit').value; saveSettings(); renderAll(); });
+  $('setDecimals').addEventListener('change', function () { settings.decimals = parseInt($('setDecimals').value, 10) || 2; saveSettings(); renderAll(); });
+  $('setQuick').addEventListener('change', applyQuickSetting);
+  $('setQuickReset').addEventListener('click', function () { $('setQuick').value = DEFAULT_QUICK; applyQuickSetting(); });
+  $('setAutoFocus').addEventListener('change', function () { settings.autoFocus = $('setAutoFocus').checked; saveSettings(); });
+  $('setConfirmDelete').addEventListener('change', function () { settings.confirmDelete = $('setConfirmDelete').checked; saveSettings(); });
+  $('setFeedback').addEventListener('change', function () { settings.feedback = $('setFeedback').checked; saveSettings(); if (settings.feedback) feedbackTick('ok'); });
+  $('setSaveStatus').addEventListener('change', function () { settings.showSaveStatus = $('setSaveStatus').checked; saveSettings(); renderSaveStatus(); });
+  $('setDefaults').addEventListener('click', function () {
+    var keep = settings.recentHeights; settings = sanitizeSettings({ recentHeights: keep }); saveSettings();
+    syncSettingsUI(); buildQuickGirths(); renderAll(); toast('Settings restored', 'info');
+  });
+  $('exportJsonBtn').addEventListener('click', function () { exportJSON(false); });
+  $('backupBtn').addEventListener('click', function () { exportJSON(true); });
+  $('importBtn').addEventListener('click', function () { $('importFile').click(); });
+  $('importFile').addEventListener('change', function () { handleImport($('importFile').files[0]); $('importFile').value = ''; });
+  $('clearDataBtn').addEventListener('click', clearAllData);
+
+  // Keyboard shortcuts (Enter in the girth box is above; Escape closes dialogs natively)
+  document.addEventListener('keydown', function (e) {
+    var mod = e.ctrlKey || e.metaKey; if (!mod || e.altKey) return;
+    var k = e.key.toLowerCase();
+    if (k === 's') { e.preventDefault(); clearTimeout(draftTimer); if (saveState()) toast('Data saved'); else toast('Could not save on this device', 'error'); }
+    else if (k === 'e') { e.preventDefault(); exportPDF(); }
+    else if (k === 'p') { renderPrint(); }
+  });
+  window.addEventListener('beforeunload', function () { clearTimeout(draftTimer); saveState(); });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) { clearTimeout(draftTimer); saveState(); } });
+  window.addEventListener('beforeprint', renderPrint);
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    var onMq = function () { if (themePref() === 'system') applyTheme('system', false); };
+    if (mq.addEventListener) mq.addEventListener('change', onMq);
+  }
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+function init() {
+  var loaded = loadSavedSession();
+  session = loaded.session;
+  populateHeightSelects(); buildQuickGirths(); fillSupplierInputs(); syncHeightSelects();
+  $('appVersion').textContent = APP_VERSION;
+  $('aboutCompany').textContent = COMPANY.name;
+  applyTheme(themePref(), false); syncSettingsUI(); wireEvents();
+  renderAll(); measureHeader();
+  showView(location.hash.replace('#', '') || 'home', true);
+  ui.lastSaved = loaded.hadData ? new Date() : null; renderSaveStatus();
+  if (window.ResizeObserver) new ResizeObserver(measureHeader).observe($('appHeader'));
+
+  // Offer to continue the previous session when the app is reopened (not on a simple refresh of this tab)
+  var answered = false; try { answered = !!sessionStorage.getItem('tlm.continued'); } catch (e) {}
+  if (loaded.hadData && !answered) {
+    var S = computeStats();
+    $('contText').textContent = (session.supplier.name || 'Untitled load') + ' · ' + lineLabel(curLine()) + ' · ' + S.count + ' logs · ' + fmtVU(S.volume) + '. Last activity ' + longDateTime((session.activity[session.activity.length - 1] || {}).t || session.createdAt) + '.';
+    var mark = function () { try { sessionStorage.setItem('tlm.continued', '1'); } catch (e) {} };
+    $('contContinue').addEventListener('click', function () { mark(); $('contDlg').close(); toast('Session restored', 'info'); });
+    $('contNew').addEventListener('click', function () {
+      mark(); $('contDlg').close();
+      if (sessionHasContent(session)) archiveSession(session);
+      adoptSession(newSession()); toast('New session started. The previous one is under Saved sessions.', 'info', { duration: 4500 });
+    });
+    $('contDlg').addEventListener('close', mark);
+    $('contDlg').showModal();
+  } else { try { sessionStorage.setItem('tlm.continued', '1'); } catch (e) {} }
+}
+// Same helper names as the original app
+window.scrollToTop = function () { window.scrollTo({ top: 0, behavior: 'smooth' }); };
+window.goToLogs = function () { showView('logs'); };
+window.goToSummary = function () { showView('reports'); };
+init();
+})();
+</script>
+</body>
+</html>
